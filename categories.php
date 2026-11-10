@@ -38,45 +38,51 @@ $cats = $pdo->query(
 include __DIR__ . '/header.php';
 ?>
 <div class="toolbar">
-  <button class="btn btn-success" onclick="editCat(null)">➕ ເພີ່ມໝວດໝູ່</button>
+  <div></div>
+  <button class="btn btn-success" onclick="editCat(null)"><i data-lucide="plus"></i> ເພີ່ມໝວດໝູ່</button>
 </div>
-<div class="card">
+<div class="table-wrap">
   <table class="table">
-    <tr><th>ຊື່ໝວດໝູ່</th><th>ຄຳອະທິບາຍ</th><th class="num">ຈຳນວນສິນຄ້າ</th><th style="width:160px">ຈັດການ</th></tr>
+    <tr><th>ຊື່ໝວດໝູ່</th><th>ຄຳອະທິບາຍ</th><th class="num">ຈຳນວນສິນຄ້າ</th><th style="width:180px;text-align:right">ຈັດການ</th></tr>
     <?php foreach ($cats as $c): ?>
     <tr>
       <td><strong><?= h($c['name']) ?></strong></td>
-      <td><?= h($c['description'] ?? '-') ?></td>
-      <td class="num"><?= $c['cnt'] ?></td>
-      <td>
-        <button class="btn btn-sm btn-primary" onclick='editCat(<?= json_encode($c, JSON_UNESCAPED_UNICODE | JSON_HEX_APOS) ?>)'>✏️</button>
+      <td style="color:var(--text-muted)"><?= h($c['description'] ?: '-') ?></td>
+      <td class="num"><span class="badge badge-info tabular"><?= number_format($c['cnt']) ?></span></td>
+      <td style="text-align:right">
+        <button class="btn btn-sm btn-secondary" onclick='editCat(<?= json_encode($c, JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>
+          <i data-lucide="pencil"></i> ແກ້ໄຂ
+        </button>
         <form method="post" style="display:inline" onsubmit="return confirm('ລຶບໝວດໝູ່ນີ້ບໍ່?')">
           <input type="hidden" name="act" value="delete"><input type="hidden" name="id" value="<?= $c['id'] ?>">
-          <button class="btn btn-sm btn-danger">🗑</button>
+          <button class="btn btn-sm btn-danger" title="ລຶບ"><i data-lucide="trash-2"></i></button>
         </form>
       </td>
     </tr>
     <?php endforeach; ?>
+    <?php if (!$cats): ?>
+      <tr><td colspan="4" style="color:var(--text-muted);text-align:center;padding:32px">ຍັງບໍ່ມີໝວດໝູ່ສິນຄ້າ</td></tr>
+    <?php endif; ?>
   </table>
 </div>
 
 <div class="modal-bg" id="catModal">
   <div class="modal">
-    <h3 id="cmTitle">ເພີ່ມໝວດໝູ່</h3>
+    <h3 id="cmTitle"><i data-lucide="tag"></i> <span>ເພີ່ມໝວດໝູ່</span></h3>
     <form method="post">
       <input type="hidden" name="act" value="save"><input type="hidden" name="id" id="c_id">
       <div class="form-group"><label>ຊື່ໝວດໝູ່ *</label><input type="text" name="name" id="c_name" required></div>
       <div class="form-group"><label>ຄຳອະທິບາຍ</label><input type="text" name="description" id="c_desc"></div>
-      <div style="display:flex;gap:10px;margin-top:14px">
-        <button type="button" class="btn btn-block" onclick="document.getElementById('catModal').classList.remove('show')">ປິດ</button>
-        <button type="submit" class="btn btn-success btn-block">💾 ບັນທຶກ</button>
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <button type="button" class="btn btn-secondary btn-block" onclick="document.getElementById('catModal').classList.remove('show')">ຍົກເລີກ</button>
+        <button type="submit" class="btn btn-success btn-block"><i data-lucide="check"></i> ບັນທຶກ</button>
       </div>
     </form>
   </div>
 </div>
 <script>
 function editCat(c){
-  document.getElementById('cmTitle').textContent = c ? '✏️ ແກ້ໄຂໝວດໝູ່' : '➕ ເພີ່ມໝວດໝູ່';
+  document.querySelector('#cmTitle span').textContent = c ? 'ແກ້ໄຂໝວດໝູ່' : 'ເພີ່ມໝວດໝູ່';
   document.getElementById('c_id').value = c ? c.id : '';
   document.getElementById('c_name').value = c ? c.name : '';
   document.getElementById('c_desc').value = c ? (c.description || '') : '';

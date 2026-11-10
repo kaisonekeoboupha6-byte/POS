@@ -63,30 +63,33 @@ $users = $pdo->query(
         AND YEAR(s.created_at)=YEAR(CURDATE()) AND MONTH(s.created_at)=MONTH(CURDATE())) month_sales
      FROM users u ORDER BY u.id')->fetchAll();
 
-$roleLabel = ['admin' => 'ຜູ້ດູແລລະບົບ', 'manager' => 'ຜູ້ຈັດການ', 'cashier' => 'ພະນັກງານຂາຍ'];
+$roleLabel = ['admin' => 'ຜູ້ດູແລລະບົບ (Admin)', 'manager' => 'ຜູ້ຈັດການ (Manager)', 'cashier' => 'ພະນັກງານຂາຍ (Cashier)'];
 include __DIR__ . '/header.php';
 ?>
 <div class="toolbar">
-  <button class="btn btn-success" onclick="editUser(null)">➕ ເພີ່ມພະນັກງານ</button>
+  <div></div>
+  <button class="btn btn-success" onclick="editUser(null)"><i data-lucide="user-plus"></i> ເພີ່ມພະນັກງານ</button>
 </div>
-<div class="card">
+<div class="table-wrap">
   <table class="table">
     <tr><th>ຊື່ຜູ້ໃຊ້</th><th>ຊື່-ນາມສະກຸນ</th><th>ເບີໂທ</th><th>ສິດທິ</th>
-        <th class="num">ຍອດຂາຍເດືອນນີ້</th><th>ສະຖານະ</th><th style="width:150px">ຈັດການ</th></tr>
+        <th class="num">ຍອດຂາຍເດືອນນີ້</th><th>ສະຖານະ</th><th style="width:170px;text-align:right">ຈັດການ</th></tr>
     <?php foreach ($users as $usr): ?>
     <tr>
-      <td><strong><?= h($usr['username']) ?></strong></td>
-      <td><?= h($usr['fullname']) ?></td>
-      <td><?= h($usr['phone'] ?? '-') ?></td>
-      <td><span class="badge badge-info"><?= $roleLabel[$usr['role']] ?></span></td>
-      <td class="num"><?= money($usr['month_sales']) ?></td>
+      <td style="font-family:var(--font-mono);font-weight:700"><?= h($usr['username']) ?></td>
+      <td><strong><?= h($usr['fullname']) ?></strong></td>
+      <td class="tabular"><?= h($usr['phone'] ?: '-') ?></td>
+      <td><span class="badge badge-info"><?= $roleLabel[$usr['role']] ?? h($usr['role']) ?></span></td>
+      <td class="num"><strong><?= money($usr['month_sales']) ?></strong></td>
       <td><span class="badge <?= $usr['status'] ? 'badge-success' : 'badge-danger' ?>"><?= $usr['status'] ? 'ໃຊ້ງານ' : 'ປິດ' ?></span></td>
-      <td>
-        <button class="btn btn-sm btn-primary" onclick='editUser(<?= json_encode($usr, JSON_UNESCAPED_UNICODE | JSON_HEX_APOS) ?>)'>✏️</button>
+      <td style="text-align:right">
+        <button class="btn btn-sm btn-secondary" onclick='editUser(<?= json_encode($usr, JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>
+          <i data-lucide="pencil"></i> ແກ້ໄຂ
+        </button>
         <?php if ($usr['id'] != $me['id']): ?>
         <form method="post" style="display:inline" onsubmit="return confirm('ປິດການໃຊ້ງານຜູ້ໃຊ້ນີ້ບໍ່?')">
           <input type="hidden" name="act" value="delete"><input type="hidden" name="id" value="<?= $usr['id'] ?>">
-          <button class="btn btn-sm btn-danger">🗑</button>
+          <button class="btn btn-sm btn-danger" title="ປິດການໃຊ້ງານ"><i data-lucide="user-x"></i></button>
         </form>
         <?php endif; ?>
       </td>
@@ -97,11 +100,11 @@ include __DIR__ . '/header.php';
 
 <div class="modal-bg" id="userModal">
   <div class="modal">
-    <h3 id="umTitle">ເພີ່ມພະນັກງານ</h3>
+    <h3 id="umTitle"><i data-lucide="user-cog"></i> <span>ເພີ່ມພະນັກງານ</span></h3>
     <form method="post">
       <input type="hidden" name="act" value="save"><input type="hidden" name="id" id="u_id">
       <div class="form-row">
-        <div class="form-group"><label>ຊື່ຜູ້ໃຊ້ (username) *</label><input type="text" name="username" id="u_username" required></div>
+        <div class="form-group"><label>ຊື່ຜູ້ໃຊ້ (Username) *</label><input type="text" name="username" id="u_username" required></div>
         <div class="form-group"><label>ລະຫັດຜ່ານ <small id="u_pwhint">(ວ່າງ = 123456)</small></label>
           <input type="password" name="password" id="u_password"></div>
       </div>
@@ -116,17 +119,17 @@ include __DIR__ . '/header.php';
           </select></div>
       </div>
       <div class="form-group"><label>ສະຖານະ</label>
-        <select name="status" id="u_status"><option value="1">ໃຊ້ງານ</option><option value="0">ປິດ</option></select></div>
-      <div style="display:flex;gap:10px;margin-top:14px">
-        <button type="button" class="btn btn-block" onclick="document.getElementById('userModal').classList.remove('show')">ປິດ</button>
-        <button type="submit" class="btn btn-success btn-block">💾 ບັນທຶກ</button>
+        <select name="status" id="u_status"><option value="1">ໃຊ້ງານ</option><option value="0">ປິດການໃຊ້ງານ</option></select></div>
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <button type="button" class="btn btn-secondary btn-block" onclick="document.getElementById('userModal').classList.remove('show')">ຍົກເລີກ</button>
+        <button type="submit" class="btn btn-success btn-block"><i data-lucide="check"></i> ບັນທຶກ</button>
       </div>
     </form>
   </div>
 </div>
 <script>
 function editUser(u){
-  document.getElementById('umTitle').textContent = u ? '✏️ ແກ້ໄຂພະນັກງານ' : '➕ ເພີ່ມພະນັກງານ';
+  document.querySelector('#umTitle span').textContent = u ? 'ແກ້ໄຂພະນັກງານ' : 'ເພີ່ມພະນັກງານ';
   document.getElementById('u_id').value = u ? u.id : '';
   document.getElementById('u_username').value = u ? u.username : '';
   document.getElementById('u_fullname').value = u ? u.fullname : '';

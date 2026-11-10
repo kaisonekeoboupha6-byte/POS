@@ -1,0 +1,7 @@
+# Documentation, slides & design mockups
+docs/
+design-system/
+presentation.html
+mockup_pos.html
+*.doc
+*.docx

@@ -35,50 +35,56 @@ $suppliers = $pdo->query('SELECT * FROM suppliers ORDER BY name')->fetchAll();
 include __DIR__ . '/header.php';
 ?>
 <div class="toolbar">
-  <button class="btn btn-success" onclick="editSup(null)">➕ ເພີ່ມຜູ້ສະໜອງ</button>
+  <div></div>
+  <button class="btn btn-success" onclick="editSup(null)"><i data-lucide="plus"></i> ເພີ່ມຜູ້ສະໜອງ</button>
 </div>
-<div class="card">
+<div class="table-wrap">
   <table class="table">
-    <tr><th>ຊື່</th><th>ເບີໂທ</th><th>ອີເມວ</th><th>ທີ່ຢູ່</th><th style="width:160px">ຈັດການ</th></tr>
+    <tr><th>ຊື່ຜູ້ສະໜອງ</th><th>ເບີໂທ</th><th>ອີເມວ</th><th>ທີ່ຢູ່</th><th style="width:170px;text-align:right">ຈັດການ</th></tr>
     <?php foreach ($suppliers as $s): ?>
     <tr>
       <td><strong><?= h($s['name']) ?></strong></td>
-      <td><?= h($s['phone'] ?? '-') ?></td>
-      <td><?= h($s['email'] ?? '-') ?></td>
-      <td><?= h($s['address'] ?? '-') ?></td>
-      <td>
-        <button class="btn btn-sm btn-primary" onclick='editSup(<?= json_encode($s, JSON_UNESCAPED_UNICODE | JSON_HEX_APOS) ?>)'>✏️</button>
+      <td class="tabular"><?= h($s['phone'] ?: '-') ?></td>
+      <td style="color:var(--text-muted)"><?= h($s['email'] ?: '-') ?></td>
+      <td style="color:var(--text-muted)"><?= h($s['address'] ?: '-') ?></td>
+      <td style="text-align:right">
+        <button class="btn btn-sm btn-secondary" onclick='editSup(<?= json_encode($s, JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>
+          <i data-lucide="pencil"></i> ແກ້ໄຂ
+        </button>
         <form method="post" style="display:inline" onsubmit="return confirm('ລຶບຜູ້ສະໜອງນີ້ບໍ່?')">
           <input type="hidden" name="act" value="delete"><input type="hidden" name="id" value="<?= $s['id'] ?>">
-          <button class="btn btn-sm btn-danger">🗑</button>
+          <button class="btn btn-sm btn-danger" title="ລຶບ"><i data-lucide="trash-2"></i></button>
         </form>
       </td>
     </tr>
     <?php endforeach; ?>
+    <?php if (!$suppliers): ?>
+      <tr><td colspan="5" style="color:var(--text-muted);text-align:center;padding:32px">ຍັງບໍ່ມີຂໍ້ມູນຜູ້ສະໜອງ</td></tr>
+    <?php endif; ?>
   </table>
 </div>
 
 <div class="modal-bg" id="supModal">
   <div class="modal">
-    <h3 id="smTitle">ເພີ່ມຜູ້ສະໜອງ</h3>
+    <h3 id="smTitle"><i data-lucide="truck"></i> <span>ເພີ່ມຜູ້ສະໜອງ</span></h3>
     <form method="post">
       <input type="hidden" name="act" value="save"><input type="hidden" name="id" id="s_id">
       <div class="form-group"><label>ຊື່ຜູ້ສະໜອງ *</label><input type="text" name="name" id="s_name" required></div>
       <div class="form-row">
         <div class="form-group"><label>ເບີໂທ</label><input type="text" name="phone" id="s_phone"></div>
-        <div class="form-group"><label>ອີເມວ</label><input type="text" name="email" id="s_email"></div>
+        <div class="form-group"><label>ອີເມວ</label><input type="email" name="email" id="s_email"></div>
       </div>
       <div class="form-group"><label>ທີ່ຢູ່</label><input type="text" name="address" id="s_address"></div>
-      <div style="display:flex;gap:10px;margin-top:14px">
-        <button type="button" class="btn btn-block" onclick="document.getElementById('supModal').classList.remove('show')">ປິດ</button>
-        <button type="submit" class="btn btn-success btn-block">💾 ບັນທຶກ</button>
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <button type="button" class="btn btn-secondary btn-block" onclick="document.getElementById('supModal').classList.remove('show')">ຍົກເລີກ</button>
+        <button type="submit" class="btn btn-success btn-block"><i data-lucide="check"></i> ບັນທຶກ</button>
       </div>
     </form>
   </div>
 </div>
 <script>
 function editSup(s){
-  document.getElementById('smTitle').textContent = s ? '✏️ ແກ້ໄຂຜູ້ສະໜອງ' : '➕ ເພີ່ມຜູ້ສະໜອງ';
+  document.querySelector('#smTitle span').textContent = s ? 'ແກ້ໄຂຜູ້ສະໜອງ' : 'ເພີ່ມຜູ້ສະໜອງ';
   document.getElementById('s_id').value = s ? s.id : '';
   document.getElementById('s_name').value = s ? s.name : '';
   document.getElementById('s_phone').value = s ? (s.phone || '') : '';

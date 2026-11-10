@@ -45,47 +45,83 @@ $recent = $pdo->query(
 
 include __DIR__ . '/header.php';
 ?>
-<div class="grid grid-4">
-  <div class="card stat-card"><span class="icon">💰</span>
-    <div><div class="value"><?= money($today_sales['t']) ?></div><div class="label">ຍອດຂາຍມື້ນີ້ (<?= $today_sales['c'] ?> ບິນ)</div></div></div>
-  <div class="card stat-card"><span class="icon">📅</span>
-    <div><div class="value"><?= money($month_sales['t']) ?></div><div class="label">ຍອດຂາຍເດືອນນີ້</div></div></div>
-  <div class="card stat-card"><span class="icon">📦</span>
-    <div><div class="value"><?= number_format($product_count) ?></div><div class="label">ສິນຄ້າທັງໝົດ</div></div></div>
-  <div class="card stat-card"><span class="icon">⚠️</span>
-    <div><div class="value" style="color:<?= $low_stock ? '#dc2626' : '#16a34a' ?>"><?= count($low_stock) ?></div>
-    <div class="label">ສິນຄ້າໃກ້ໝົດສະຕ໋ອກ</div></div></div>
+<div class="grid grid-4" style="margin-bottom: 22px;">
+  <div class="stat-card">
+    <div class="icon" style="color:var(--emerald); background:var(--emerald-subtle);"><i data-lucide="banknote"></i></div>
+    <div>
+      <div class="value tabular"><?= money($today_sales['t']) ?></div>
+      <div class="label">ຍອດຂາຍມື້ນີ້ (<?= $today_sales['c'] ?> ບິນ)</div>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="icon" style="color:var(--primary); background:var(--primary-50);"><i data-lucide="calendar"></i></div>
+    <div>
+      <div class="value tabular"><?= money($month_sales['t']) ?></div>
+      <div class="label">ຍອດຂາຍເດືອນນີ້</div>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="icon" style="color:#6366f1; background:#eef2ff;"><i data-lucide="package"></i></div>
+    <div>
+      <div class="value tabular"><?= number_format($product_count) ?></div>
+      <div class="label">ສິນຄ້າທັງໝົດໃນລະບົບ</div>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="icon" style="color:<?= $low_stock ? 'var(--danger)' : 'var(--success)' ?>; background:<?= $low_stock ? 'var(--danger-50)' : 'var(--success-50)' ?>;">
+      <i data-lucide="<?= $low_stock ? 'alert-triangle' : 'check-circle' ?>"></i>
+    </div>
+    <div>
+      <div class="value tabular" style="color:<?= $low_stock ? 'var(--danger)' : 'var(--success)' ?>"><?= count($low_stock) ?></div>
+      <div class="label">ສິນຄ້າໃກ້ໝົດສະຕ໋ອກ</div>
+    </div>
+  </div>
 </div>
 
-<div class="grid grid-2">
+<div class="grid grid-2" style="margin-bottom: 22px;">
   <div class="card">
-    <h3>📈 ຍອດຂາຍ 7 ວັນຫຼ້າສຸດ</h3>
-    <canvas id="salesChart" height="220"></canvas>
+    <h3 style="display:flex; align-items:center; gap:8px;">
+      <i data-lucide="trending-up" style="width:18px; height:18px; color:var(--primary);"></i>
+      <span>ຍອດຂາຍ 7 ວັນຫຼ້າສຸດ</span>
+    </h3>
+    <canvas id="salesChart" height="210"></canvas>
   </div>
   <div class="card">
-    <h3>🏆 ສິນຄ້າຂາຍດີເດືອນນີ້</h3>
+    <h3 style="display:flex; align-items:center; gap:8px;">
+      <i data-lucide="award" style="width:18px; height:18px; color:var(--warning);"></i>
+      <span>ສິນຄ້າຂາຍດີເດືອນນີ້</span>
+    </h3>
     <table class="table">
-      <tr><th>ສິນຄ້າ</th><th class="num">ຈຳນວນຂາຍ</th><th class="num">ຍອດເງິນ</th></tr>
+      <tr><th>ສິນຄ້າ</th><th style="text-align:right">ຈຳນວນ</th><th style="text-align:right">ຍອດຂາຍ</th></tr>
       <?php foreach ($top as $t): ?>
-      <tr><td><?= h($t['product_name']) ?></td><td class="num"><?= number_format($t['qty']) ?></td>
-          <td class="num"><?= money($t['total']) ?></td></tr>
+      <tr>
+        <td style="font-weight:600;"><?= h($t['product_name']) ?></td>
+        <td class="tabular" style="text-align:right; font-weight:600;"><?= number_format($t['qty']) ?></td>
+        <td class="tabular" style="text-align:right; font-weight:700; color:var(--text);"><?= money($t['total']) ?></td>
+      </tr>
       <?php endforeach; ?>
-      <?php if (!$top): ?><tr><td colspan="3" style="color:#94a3b8">ຍັງບໍ່ມີຂໍ້ມູນການຂາຍ</td></tr><?php endif; ?>
+      <?php if (!$top): ?><tr><td colspan="3" style="text-align:center; color:var(--text-muted); padding:30px;">ຍັງບໍ່ມີຂໍ້ມູນການຂາຍໃນເດືອນນີ້</td></tr><?php endif; ?>
     </table>
   </div>
 </div>
 
 <?php if ($low_stock): ?>
-<div class="card">
-  <h3 style="color:#dc2626">⚠️ ແຈ້ງເຕືອນ: ສິນຄ້າໃກ້ໝົດ / ໝົດສະຕ໋ອກ — ຄວນສັ່ງເພີ່ມ</h3>
+<div class="card" style="border-color:#fecdd3;">
+  <h3 style="color:var(--danger); display:flex; align-items:center; gap:8px;">
+    <i data-lucide="alert-triangle" style="width:18px; height:18px;"></i>
+    <span>ແຈ້ງເຕືອນ: ສິນຄ້າໃກ້ໝົດ / ໝົດສະຕ໋ອກ — ຄວນສັ່ງເພີ່ມ</span>
+  </h3>
   <table class="table">
-    <tr><th>ບາໂຄດ</th><th>ສິນຄ້າ</th><th class="num">ຄົງເຫຼືອ</th><th class="num">ຂັ້ນຕໍ່າ</th><th></th></tr>
+    <tr><th>ບາໂຄດ</th><th>ສິນຄ້າ</th><th style="text-align:right">ຄົງເຫຼືອ</th><th style="text-align:right">ຂັ້ນຕໍ່າ</th><th></th></tr>
     <?php foreach ($low_stock as $p): ?>
     <tr>
-      <td><?= h($p['barcode']) ?></td><td><?= h($p['name']) ?></td>
-      <td class="num"><span class="badge <?= $p['stock_qty'] <= 0 ? 'badge-danger' : 'badge-warning' ?>"><?= $p['stock_qty'] ?></span></td>
-      <td class="num"><?= $p['min_stock'] ?></td>
-      <td><a href="purchases.php" class="btn btn-sm btn-primary">ຮັບເຂົ້າສາງ</a></td>
+      <td style="font-family:var(--font-mono, monospace); font-size:12.5px;"><?= h($p['barcode']) ?></td>
+      <td style="font-weight:600;"><?= h($p['name']) ?></td>
+      <td class="tabular" style="text-align:right;">
+        <span class="badge <?= $p['stock_qty'] <= 0 ? 'badge-danger' : 'badge-warning' ?>"><?= $p['stock_qty'] ?></span>
+      </td>
+      <td class="tabular" style="text-align:right; color:var(--text-muted);"><?= $p['min_stock'] ?></td>
+      <td style="text-align:right;"><a href="purchases.php" class="btn btn-sm btn-primary">ຮັບເຂົ້າສາງ</a></td>
     </tr>
     <?php endforeach; ?>
   </table>
@@ -93,23 +129,41 @@ include __DIR__ . '/header.php';
 <?php endif; ?>
 
 <div class="card">
-  <h3>🧾 ບິນຫຼ້າສຸດ</h3>
+  <h3 style="display:flex; align-items:center; gap:8px;">
+    <i data-lucide="receipt" style="width:18px; height:18px; color:var(--primary);"></i>
+    <span>ບິນຫຼ້າສຸດ</span>
+  </h3>
   <table class="table">
-    <tr><th>ເລກບິນ</th><th>ພະນັກງານ</th><th class="num">ຍອດ</th><th>ຈ່າຍ</th><th>ສະຖານະ</th><th>ວັນທີ</th><th></th></tr>
+    <tr><th>ເລກບິນ</th><th>ພະນັກງານ</th><th style="text-align:right">ຍອດລວມ</th><th>ຊຳລະດ້ວຍ</th><th>ສະຖານະ</th><th>ວັນທີ</th><th style="text-align:right">ພິມ</th></tr>
     <?php foreach ($recent as $s): ?>
     <tr>
-      <td><?= h($s['invoice_no']) ?></td>
+      <td style="font-weight:700; font-family:var(--font-mono, monospace); font-size:13px;"><?= h($s['invoice_no']) ?></td>
       <td><?= h($s['fullname']) ?></td>
-      <td class="num"><?= money($s['total']) ?></td>
-      <td><?= ['cash'=>'💵 ສົດ','card'=>'💳 ບັດ','qr'=>'📱 QR'][$s['payment_method']] ?? '-' ?></td>
+      <td class="tabular" style="text-align:right; font-weight:700;"><?= money($s['total']) ?></td>
+      <td>
+        <?php
+          $pm = $s['payment_method'];
+          if ($pm === 'cash') echo '<span class="badge" style="background:#f1f5f9; color:#334155;">ເງິນສົດ</span>';
+          elseif ($pm === 'qr') echo '<span class="badge badge-info">BCEL QR</span>';
+          elseif ($pm === 'card') echo '<span class="badge" style="background:#f5f3ff; color:#6d28d9;">ບັດ</span>';
+          else echo '-';
+        ?>
+      </td>
       <td><?php
-        $badge = ['completed'=>['badge-success','ສຳເລັດ'],'held'=>['badge-warning','ພັກບິນ'],'cancelled'=>['badge-danger','ຍົກເລີກ']][$s['status']];
+        $badge = ['completed'=>['badge-success','ສຳເລັດ'],'held'=>['badge-warning','ພັກບິນ'],'cancelled'=>['badge-danger','ຍົກເລີກ']][$s['status']] ?? ['badge-info', $s['status']];
         echo '<span class="badge '.$badge[0].'">'.$badge[1].'</span>';
       ?></td>
-      <td><?= date('d/m/Y H:i', strtotime($s['created_at'])) ?></td>
-      <td><a href="receipt.php?id=<?= $s['id'] ?>" target="_blank" class="btn btn-sm">🖨</a></td>
+      <td style="color:var(--text-muted); font-size:12.5px;"><?= date('d/m/Y H:i', strtotime($s['created_at'])) ?></td>
+      <td style="text-align:right;">
+        <a href="receipt.php?id=<?= $s['id'] ?>" target="_blank" class="btn btn-sm btn-secondary" title="ພິມໃບບິນ">
+          <i data-lucide="printer" style="width:14px; height:14px;"></i>
+        </a>
+      </td>
     </tr>
     <?php endforeach; ?>
+    <?php if (!$recent): ?>
+    <tr><td colspan="7" style="text-align:center; color:var(--text-muted); padding:30px;">ຍັງບໍ່ມີປະຫວັດການຂາຍ</td></tr>
+    <?php endif; ?>
   </table>
 </div>
 
@@ -122,12 +176,35 @@ new Chart(document.getElementById('salesChart'), {
     datasets: [{
       label: 'ຍອດຂາຍ (₭)',
       data: <?= json_encode(array_values($chart)) ?>,
-      backgroundColor: '#2563eb',
+      backgroundColor: '#0284c7',
       borderRadius: 6,
     }]
   },
-  options: { plugins: { legend: { display: false } },
-             scales: { y: { beginAtZero: true } } }
+  options: {
+    responsive: true,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: function(context) {
+            return new Intl.NumberFormat('lo-LA').format(context.raw) + ' ₭';
+          }
+        }
+      }
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        grid: { color: '#f1f5f9' },
+        ticks: {
+          callback: function(val) {
+            return new Intl.NumberFormat('lo-LA').format(val) + ' ₭';
+          }
+        }
+      },
+      x: { grid: { display: false } }
+    }
+  }
 });
 </script>
 <?php include __DIR__ . '/footer.php'; ?>

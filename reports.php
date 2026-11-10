@@ -131,62 +131,108 @@ $page = 'reports';
 $title = 'ລາຍງານ ແລະ ການວິເຄາະ';
 include __DIR__ . '/header.php';
 
-$tabs = ['sales' => '🧾 ລາຍງານການຂາຍ', 'daily' => '📅 ຍອດຂາຍລາຍວັນ',
-         'products' => '🏆 ສິນຄ້າຂາຍດີ', 'staff' => '👤 ຍອດຂາຍພະນັກງານ'];
+$tabs = [
+    'sales'    => ['receipt',     'ລາຍງານການຂາຍ'],
+    'daily'    => ['calendar',    'ຍອດຂາຍລາຍວັນ'],
+    'products' => ['award',       'ສິນຄ້າຂາຍດີ'],
+    'staff'    => ['user-check',  'ຍອດຂາຍພະນັກງານ'],
+];
 ?>
 <div class="toolbar no-print">
-  <form method="get" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+  <form method="get">
     <input type="hidden" name="type" value="<?= h($type) ?>">
-    <label>ແຕ່ວັນທີ</label><input type="date" name="from" value="<?= h($from) ?>">
-    <label>ຫາ</label><input type="date" name="to" value="<?= h($to) ?>">
-    <button class="btn btn-primary">ເບິ່ງລາຍງານ</button>
+    <label style="font-size:13px;font-weight:700">ແຕ່ວັນທີ</label>
+    <input type="date" name="from" value="<?= h($from) ?>" class="tabular">
+    <label style="font-size:13px;font-weight:700">ຫາ</label>
+    <input type="date" name="to" value="<?= h($to) ?>" class="tabular">
+    <button class="btn btn-primary"><i data-lucide="filter"></i> ເບິ່ງລາຍງານ</button>
   </form>
-  <a class="btn btn-success" href="reports.php?type=<?= h($type) ?>&from=<?= h($from) ?>&to=<?= h($to) ?>&export=csv">⬇ Export Excel (CSV)</a>
-  <button class="btn btn-warning" onclick="window.print()">🖨 ພິມ / PDF</button>
+  <div style="display:flex;gap:8px">
+    <a class="btn btn-success" href="reports.php?type=<?= h($type) ?>&from=<?= h($from) ?>&to=<?= h($to) ?>&export=csv">
+      <i data-lucide="download"></i> Export Excel (CSV)
+    </a>
+    <button class="btn btn-secondary" onclick="window.print()">
+      <i data-lucide="printer"></i> ພິມ / PDF
+    </button>
+  </div>
 </div>
 
-<div class="toolbar no-print">
-  <?php foreach ($tabs as $k => $label): ?>
-  <a class="btn <?= $type === $k ? 'btn-primary' : '' ?>" href="reports.php?type=<?= $k ?>&from=<?= h($from) ?>&to=<?= h($to) ?>"><?= $label ?></a>
+<div class="toolbar no-print" style="justify-content:flex-start">
+  <?php foreach ($tabs as $k => [$icon, $label]): ?>
+  <a class="btn <?= $type === $k ? 'btn-primary' : 'btn-secondary' ?>" href="reports.php?type=<?= $k ?>&from=<?= h($from) ?>&to=<?= h($to) ?>">
+    <i data-lucide="<?= $icon ?>"></i> <?= $label ?>
+  </a>
   <?php endforeach; ?>
 </div>
 
 <div class="grid grid-4">
-  <div class="card stat-card"><span class="icon">🧾</span><div>
-    <div class="value"><?= number_format($summary['bills']) ?></div><div class="label">ຈຳນວນບິນ</div></div></div>
-  <div class="card stat-card"><span class="icon">💰</span><div>
-    <div class="value"><?= money($summary['total']) ?></div><div class="label">ຍອດຂາຍສຸດທິ</div></div></div>
-  <div class="card stat-card"><span class="icon">📦</span><div>
-    <div class="value"><?= money($pl['cost']) ?></div><div class="label">ຕົ້ນທຶນສິນຄ້າ</div></div></div>
-  <div class="card stat-card"><span class="icon">📈</span><div>
-    <div class="value" style="color:<?= $profit >= 0 ? '#16a34a' : '#dc2626' ?>"><?= money($profit) ?></div>
-    <div class="label">ກຳໄລ-ຂາດທຶນ</div></div></div>
+  <div class="stat-card">
+    <div class="icon" style="color:var(--primary);background:var(--primary-50)"><i data-lucide="receipt"></i></div>
+    <div>
+      <div class="value tabular"><?= number_format($summary['bills']) ?></div>
+      <div class="label">ຈຳນວນບິນສຳເລັດ</div>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="icon" style="color:var(--success);background:var(--success-50)"><i data-lucide="banknote"></i></div>
+    <div>
+      <div class="value tabular"><?= money($summary['total']) ?></div>
+      <div class="label">ຍອດຂາຍສຸດທິ</div>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="icon" style="color:#6366f1;background:#eef2ff"><i data-lucide="package"></i></div>
+    <div>
+      <div class="value tabular"><?= money($pl['cost']) ?></div>
+      <div class="label">ຕົ້ນທຶນສິນຄ້າ</div>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="icon" style="color:<?= $profit >= 0 ? 'var(--success)' : 'var(--danger)' ?>;background:<?= $profit >= 0 ? 'var(--success-50)' : 'var(--danger-50)' ?>">
+      <i data-lucide="trending-up"></i>
+    </div>
+    <div>
+      <div class="value tabular" style="color:<?= $profit >= 0 ? 'var(--success-dark)' : 'var(--danger)' ?>"><?= money($profit) ?></div>
+      <div class="label">ກຳໄລ-ຂາດທຶນສຸດທິ</div>
+    </div>
+  </div>
 </div>
 
 <div class="card">
-  <h3><?= $tabs[$type] ?? '' ?> (<?= date('d/m/Y', strtotime($from)) ?> - <?= date('d/m/Y', strtotime($to)) ?>)</h3>
+  <h3>
+    <i data-lucide="<?= $tabs[$type][0] ?? 'file-text' ?>"></i>
+    <span><?= $tabs[$type][1] ?? '' ?> (<?= date('d/m/Y', strtotime($from)) ?> - <?= date('d/m/Y', strtotime($to)) ?>)</span>
+  </h3>
 
   <?php if ($type === 'sales'): ?>
   <table class="table">
     <tr><th>ເລກບິນ</th><th>ວັນທີ</th><th>ພະນັກງານ</th><th>ລູກຄ້າ</th>
-        <th class="num">ຫຼຸດ</th><th class="num">ຍອດຈ່າຍ</th><th>ຈ່າຍ</th><th>ສະຖານະ</th><th class="no-print">ຈັດການ</th></tr>
+        <th class="num">ສ່ວນຫຼຸດ</th><th class="num">ຍອດຊຳລະ</th><th>ຊ່ອງທາງ</th><th>ສະຖານະ</th><th class="no-print" style="text-align:right">ຈັດການ</th></tr>
     <?php foreach ($rows as $r): ?>
     <tr>
-      <td><?= h($r['invoice_no']) ?></td>
-      <td><?= date('d/m/Y H:i', strtotime($r['created_at'])) ?></td>
+      <td style="font-family:var(--font-mono);font-weight:700"><?= h($r['invoice_no']) ?></td>
+      <td style="font-size:12.5px;color:var(--text-muted)"><?= date('d/m/Y H:i', strtotime($r['created_at'])) ?></td>
       <td><?= h($r['fullname']) ?></td>
       <td><?= h($r['customer_name'] ?? '-') ?></td>
       <td class="num"><?= number_format($r['discount_amount'] + $r['points_discount']) ?></td>
-      <td class="num"><strong><?= number_format($r['total']) ?></strong></td>
-      <td><?= ['cash'=>'💵','card'=>'💳','qr'=>'📱'][$r['payment_method']] ?? '-' ?></td>
-      <td><?php $b = ['completed'=>['badge-success','ສຳເລັດ'],'held'=>['badge-warning','ພັກ'],'cancelled'=>['badge-danger','ຍົກເລີກ']][$r['status']];
+      <td class="num"><strong><?= number_format($r['total']) ?> ₭</strong></td>
+      <td>
+        <?php
+          $pm = $r['payment_method'];
+          if ($pm === 'cash') echo '<span class="badge">ເງິນສົດ</span>';
+          elseif ($pm === 'qr') echo '<span class="badge badge-info">BCEL QR</span>';
+          elseif ($pm === 'card') echo '<span class="badge">ບັດ</span>';
+          else echo '-';
+        ?>
+      </td>
+      <td><?php $b = ['completed'=>['badge-success','ສຳເລັດ'],'held'=>['badge-warning','ພັກບິນ'],'cancelled'=>['badge-danger','ຍົກເລີກ']][$r['status']] ?? ['badge',$r['status']];
           echo '<span class="badge '.$b[0].'">'.$b[1].'</span>'; ?></td>
-      <td class="no-print">
-        <a href="receipt.php?id=<?= $r['id'] ?>" target="_blank" class="btn btn-sm">🖨</a>
+      <td class="no-print" style="text-align:right">
+        <a href="receipt.php?id=<?= $r['id'] ?>" target="_blank" class="btn btn-sm btn-secondary" title="ພິມໃບບິນ"><i data-lucide="printer"></i></a>
         <?php if ($r['status'] === 'completed'): ?>
         <form method="post" style="display:inline" onsubmit="return confirm('ຍົກເລີກບິນ <?= h($r['invoice_no']) ?> ບໍ່? ສະຕ໋ອກຈະຖືກຄືນ')">
           <input type="hidden" name="act" value="cancel_sale"><input type="hidden" name="sale_id" value="<?= $r['id'] ?>">
-          <button class="btn btn-sm btn-danger">❌ ຍົກເລີກ</button>
+          <button class="btn btn-sm btn-danger"><i data-lucide="x-circle"></i> ຍົກເລີກ</button>
         </form>
         <?php endif; ?>
       </td>
@@ -196,27 +242,27 @@ $tabs = ['sales' => '🧾 ລາຍງານການຂາຍ', 'daily' => '�
 
   <?php elseif ($type === 'products'): ?>
   <table class="table">
-    <tr><th>#</th><th>ສິນຄ້າ</th><th class="num">ຈຳນວນຂາຍ</th><th class="num">ຍອດຂາຍ</th>
-        <th class="num">ຕົ້ນທຶນ</th><th class="num">ກຳໄລ</th></tr>
+    <tr><th style="width:60px">#</th><th>ສິນຄ້າ</th><th class="num">ຈຳນວນຂາຍ</th><th class="num">ຍອດຂາຍ (₭)</th>
+        <th class="num">ຕົ້ນທຶນ (₭)</th><th class="num">ກຳໄລ (₭)</th></tr>
     <?php foreach ($rows as $i => $r): ?>
     <tr>
-      <td><?= $i + 1 ?></td>
-      <td><?= h($r['product_name']) ?></td>
+      <td class="tabular" style="color:var(--text-muted)"><?= $i + 1 ?></td>
+      <td><strong><?= h($r['product_name']) ?></strong></td>
       <td class="num"><strong><?= number_format($r['qty']) ?></strong></td>
       <td class="num"><?= number_format($r['revenue']) ?></td>
       <td class="num"><?= number_format($r['cost']) ?></td>
-      <td class="num" style="color:<?= $r['profit'] >= 0 ? '#16a34a' : '#dc2626' ?>"><?= number_format($r['profit']) ?></td>
+      <td class="num" style="font-weight:700;color:<?= $r['profit'] >= 0 ? 'var(--success-dark)' : 'var(--danger)' ?>"><?= number_format($r['profit']) ?></td>
     </tr>
     <?php endforeach; ?>
   </table>
 
   <?php elseif ($type === 'staff'): ?>
   <table class="table">
-    <tr><th>ພະນັກງານ</th><th>ສິດທິ</th><th class="num">ຈຳນວນບິນ</th><th class="num">ຍອດຂາຍ</th></tr>
+    <tr><th>ພະນັກງານ</th><th>ສິດທິ</th><th class="num">ຈຳນວນບິນ</th><th class="num">ຍອດຂາຍລວມ</th></tr>
     <?php foreach ($rows as $r): ?>
     <tr>
-      <td><?= h($r['fullname']) ?></td>
-      <td><?= h($r['role']) ?></td>
+      <td><strong><?= h($r['fullname']) ?></strong></td>
+      <td><span class="badge badge-info"><?= strtoupper(h($r['role'])) ?></span></td>
       <td class="num"><?= number_format($r['bills']) ?></td>
       <td class="num"><strong><?= money($r['total']) ?></strong></td>
     </tr>
@@ -226,11 +272,11 @@ $tabs = ['sales' => '🧾 ລາຍງານການຂາຍ', 'daily' => '�
   <?php elseif ($type === 'daily'): ?>
   <canvas id="dailyChart" height="90" class="no-print"></canvas>
   <table class="table" style="margin-top:16px">
-    <tr><th>ວັນທີ</th><th class="num">ຈຳນວນບິນ</th><th class="num">ຍອດຂາຍ</th></tr>
+    <tr><th>ວັນທີ</th><th class="num">ຈຳນວນບິນ</th><th class="num">ຍອດຂາຍລວມ (₭)</th></tr>
     <?php foreach ($rows as $r): ?>
-    <tr><td><?= date('d/m/Y', strtotime($r['d'])) ?></td>
+    <tr><td class="tabular"><?= date('d/m/Y', strtotime($r['d'])) ?></td>
         <td class="num"><?= number_format($r['bills']) ?></td>
-        <td class="num"><strong><?= number_format($r['total']) ?></strong></td></tr>
+        <td class="num"><strong><?= number_format($r['total']) ?> ₭</strong></td></tr>
     <?php endforeach; ?>
   </table>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
@@ -239,12 +285,12 @@ $tabs = ['sales' => '🧾 ລາຍງານການຂາຍ', 'daily' => '�
     type: 'line',
     data: { labels: <?= json_encode(array_map(fn($r) => date('d/m', strtotime($r['d'])), $rows)) ?>,
       datasets: [{ label: 'ຍອດຂາຍ (₭)', data: <?= json_encode(array_map(fn($r) => (float)$r['total'], $rows)) ?>,
-        borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,.12)', fill: true, tension: .3 }] },
+        borderColor: '#0284c7', backgroundColor: 'rgba(2,132,199,.1)', fill: true, tension: .25 }] },
     options: { scales: { y: { beginAtZero: true } } }
   });
   </script>
   <?php endif; ?>
 
-  <?php if (!$rows): ?><p style="color:#94a3b8;text-align:center;padding:12px">ບໍ່ມີຂໍ້ມູນໃນຊ່ວງເວລານີ້</p><?php endif; ?>
+  <?php if (!$rows): ?><p style="color:var(--text-muted);text-align:center;padding:24px">ບໍ່ມີຂໍ້ມູນໃນຊ່ວງເວລານີ້</p><?php endif; ?>
 </div>
 <?php include __DIR__ . '/footer.php'; ?>

@@ -87,7 +87,14 @@ function flash_show() {
     if (!empty($_SESSION['flash'])) {
         $f = $_SESSION['flash'];
         unset($_SESSION['flash']);
-        echo '<div class="alert alert-' . h($f['type']) . '">' . h($f['msg']) . '</div>';
+        $type = in_array($f['type'], ['success', 'danger', 'warning', 'info']) ? $f['type'] : 'success';
+        $icon = [
+            'success' => 'check-circle-2',
+            'danger'  => 'alert-circle',
+            'warning' => 'alert-triangle',
+            'info'    => 'info',
+        ][$type];
+        echo '<div class="alert alert-' . h($type) . '"><i data-lucide="' . $icon . '" style="width:18px;height:18px;flex-shrink:0"></i><span>' . h($f['msg']) . '</span></div>';
     }
 }
 
@@ -102,7 +109,8 @@ function upload_image($file) {
     if (empty($file['name']) || $file['error'] !== UPLOAD_ERR_OK) return null;
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
     if (!in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'])) return null;
-    if (!is_dir(UPLOAD_DIR)) mkdir(UPLOAD_DIR, 0777, true);
+    if (@getimagesize($file['tmp_name']) === false) return null;
+    if (!is_dir(UPLOAD_DIR)) mkdir(UPLOAD_DIR, 0755, true);
     $name = 'p' . time() . '_' . mt_rand(1000, 9999) . '.' . $ext;
     if (move_uploaded_file($file['tmp_name'], UPLOAD_DIR . $name)) {
         return $name;

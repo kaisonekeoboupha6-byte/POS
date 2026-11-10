@@ -23,7 +23,8 @@ function out($data) {
 switch ($action) {
 
     /* ---------- ດຶງສິນຄ້າທັງໝົດ (refresh ຫຼັງຂາຍ) ---------- */
-    case 'all_products': {
+    case 'all_products':
+    case 'products': {
         $products = $pdo->query(
             "SELECT p.*, c.name AS category_name FROM products p
              LEFT JOIN categories c ON c.id = p.category_id
@@ -33,7 +34,8 @@ switch ($action) {
     }
 
     /* ---------- ຄົ້ນຫາສະມາຊິກ ---------- */
-    case 'search_customers': {
+    case 'search_customers':
+    case 'customer_search': {
         $q = '%' . ($input['q'] ?? '') . '%';
         $st = $pdo->prepare(
             'SELECT id, code, name, phone, points FROM customers
@@ -82,12 +84,12 @@ switch ($action) {
                 $lines[] = ['p' => $p, 'qty' => $qty, 'total' => $line_total];
             }
 
-            // ສ່ວນຫຼຸດ % ຫຼື ຈຳນວນເງິນ
+            // ສ່ວນຫຼຸດ % ຫຼື ຈຳນວນເງິນ (ປັດເສດເປັນຈຳນວນເຕັມກີບ)
             $dType = in_array($input['discount_type'] ?? '', ['percent', 'amount']) ? $input['discount_type'] : 'amount';
             $dVal  = max(0, (float)($input['discount_value'] ?? 0));
             $discount = $dType === 'percent'
-                ? $subtotal * min($dVal, 100) / 100
-                : min($dVal, $subtotal);
+                ? round($subtotal * min($dVal, 100) / 100)
+                : round(min($dVal, $subtotal));
 
             // ຄະແນນສະມາຊິກແລກສ່ວນຫຼຸດ
             $customer_id = !empty($input['customer_id']) ? (int)$input['customer_id'] : null;
@@ -105,23 +107,29 @@ switch ($action) {
             }
 
             $after_discount = max(0, $subtotal - $discount - $points_discount);
-            $tax_amount = $after_discount * $tax_rate / 100;
-            $total = $after_discount + $tax_amount;
+            $tax_amount = round($after_discount * $tax_rate / 100);
+            $total = round($after_discount + $tax_amount);
 
             $method = $hold ? null : ($input['payment_method'] ?? 'cash');
             if (!$hold && !in_array($method, ['cash', 'card', 'qr'])) $method = 'cash';
-            $paid   = $hold ? 0 : max((float)($input['paid_amount'] ?? 0), $total);
-            $change = $hold ? 0 : ($method === 'cash' ? $paid - $total : 0);
-            if (!$hold && $method !== 'cash') $paid = $total;
+            $paid_input = round((float)($input['paid_amount'] ?? 0));
+            if (!$hold && $method === 'cash' && $paid_input < $total) {
+                throw new Exception('ເງິນທີ່ຮັບມາບໍ່ພຽງພໍ (' . number_format($paid_input) . ' / ' . number_format($total) . ' ₭)');
+            }
+            $paid   = $hold ? 0 : ($method === 'cash' ? $paid_input : $total);
+            $change = $hold ? 0 : ($method === 'cash' ? max(0, $paid - $total) : 0);
 
             // ຄະແນນທີ່ໄດ້ຮັບ
             $points_earned = (!$hold && $customer_id) ? (int)floor($total / $point_rate) : 0;
 
-            // ເລກບິນ: INV + ວັນທີ + ລຳດັບ
+            // ເລກບິນ: INV + ວັນທີ + ລຳດັບສູງສຸດ (ປ້ອງກັນເລກບິນຊ້ຳເມື່ອລຶບບິນພັກ)
             $today = date('Ymd');
-            $st = $pdo->prepare("SELECT COUNT(*) c FROM sales WHERE DATE(created_at) = CURDATE()");
-            $st->execute();
-            $seq = (int)$st->fetch()['c'] + 1;
+            $st = $pdo->prepare(
+                "SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(invoice_no, '-', -1) AS UNSIGNED)), 0) m
+                 FROM sales WHERE invoice_no LIKE ? FOR UPDATE"
+            );
+            $st->execute(['INV' . $today . '-%']);
+            $seq = (int)$st->fetch()['m'] + 1;
             $invoice_no = 'INV' . $today . '-' . str_pad($seq, 4, '0', STR_PAD_LEFT);
 
             $st = $pdo->prepare(
@@ -182,11 +190,32 @@ switch ($action) {
     /* ---------- ລາຍການບິນທີ່ພັກ ---------- */
     case 'held_list': {
         $st = $pdo->prepare(
-            "SELECT id, invoice_no, subtotal, note, DATE_FORMAT(created_at,'%d/%m/%Y %H:%i') created_at
-             FROM sales WHERE status = 'held' AND user_id = ? ORDER BY id DESC"
+            "SELECT id, invoice_no, subtotal, total, note, DATE_FORMAT(created_at,'%d/%m/%Y %H:%i') created_at
+             FROM sales WHERE status = 'held' ORDER BY id DESC"
         );
-        $st->execute([$u['id']]);
+        $st->execute();
         out(['ok' => true, 'sales' => $st->fetchAll()]);
+    }
+
+    /* ---------- ລຶບບິນທີ່ພັກໄວ້ ---------- */
+    case 'delete_held': {
+        $id = (int)($input['id'] ?? 0);
+        $st = $pdo->prepare("DELETE FROM sales WHERE id = ? AND status = 'held'");
+        $st->execute([$id]);
+        out(['ok' => true]);
+    }
+
+    /* ---------- ດຶງຍອດເງິນສົດທີ່ຄວນມີໃນກະປັດຈຸບັນ (Real-time) ---------- */
+    case 'shift_status': {
+        $shift = get_open_shift($u['id']);
+        if (!$shift) out(['ok' => false, 'error' => 'ບໍ່ມີກະທີ່ເປີດຢູ່']);
+        $st = $pdo->prepare(
+            "SELECT COALESCE(SUM(total),0) cash_sales FROM sales
+             WHERE shift_id = ? AND status = 'completed' AND payment_method = 'cash'"
+        );
+        $st->execute([$shift['id']]);
+        $expected = (float)$shift['opening_cash'] + (float)$st->fetch()['cash_sales'];
+        out(['ok' => true, 'shift_id' => $shift['id'], 'expected_cash' => $expected]);
     }
 
     /* ---------- ດຶງບິນພັກກັບມາຂາຍຕໍ່ ---------- */
@@ -233,7 +262,8 @@ switch ($action) {
              status = 'closed', closed_at = NOW() WHERE id = ?"
         );
         $st->execute([$closing, $expected, $closing - $expected, $shift['id']]);
-        out(['ok' => true, 'expected' => $expected, 'difference' => $closing - $expected]);
+        $diff = $closing - $expected;
+        out(['ok' => true, 'expected' => $expected, 'difference' => $diff, 'diff' => $diff]);
     }
 
     default:

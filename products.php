@@ -49,7 +49,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($act === 'delete') {
-        $pdo->prepare('UPDATE products SET status = 0 WHERE id = ?')->execute([(int)$_POST['id']]);
+        $pdo->prepare("UPDATE products SET status = 0, barcode = CONCAT(barcode, '_del_', id) WHERE id = ?")
+            ->execute([(int)$_POST['id']]);
         flash_set('ລຶບສິນຄ້າແລ້ວ');
     }
 
@@ -91,55 +92,74 @@ include __DIR__ . '/header.php';
 ?>
 <div class="toolbar">
   <form method="get" style="display:flex;gap:8px;flex:1">
-    <input type="text" name="q" value="<?= h($q) ?>" placeholder="🔍 ຄົ້ນຫາຊື່ ຫຼື ບາໂຄດ..." style="flex:1;max-width:340px">
-    <button class="btn btn-primary">ຄົ້ນຫາ</button>
+    <div style="position:relative;flex:1;max-width:360px">
+      <i data-lucide="search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--text-muted)"></i>
+      <input type="text" name="q" value="<?= h($q) ?>" placeholder="ຄົ້ນຫາຊື່ສິນຄ້າ ຫຼື ບາໂຄດ..." style="padding-left:38px">
+    </div>
+    <button class="btn btn-primary"><i data-lucide="search"></i> ຄົ້ນຫາ</button>
+    <?php if ($q !== ''): ?>
+      <a href="products.php" class="btn btn-secondary"><i data-lucide="x"></i> ລ້າງ</a>
+    <?php endif; ?>
   </form>
-  <button class="btn btn-success" onclick="editProduct(null)">➕ ເພີ່ມສິນຄ້າ</button>
+  <button class="btn btn-success" onclick="editProduct(null)"><i data-lucide="plus"></i> ເພີ່ມສິນຄ້າ</button>
 </div>
 
-<div class="card">
+<div class="table-wrap">
   <table class="table">
     <tr>
-      <th>ຮູບ</th><th>ບາໂຄດ</th><th>ຊື່ສິນຄ້າ</th><th>ໝວດໝູ່</th>
-      <th class="num">ຕົ້ນທຶນ</th><th class="num">ລາຄາຂາຍ</th>
-      <th class="num">ຄົງເຫຼືອ</th><th class="num">ຂັ້ນຕໍ່າ</th><th style="width:210px">ຈັດການ</th>
+      <th style="width:64px">ຮູບ</th><th>ບາໂຄດ</th><th>ຊື່ສິນຄ້າ</th><th>ໝວດໝູ່</th>
+      <th class="num">ຕົ້ນທຶນ (₭)</th><th class="num">ລາຄາຂາຍ (₭)</th>
+      <th class="num">ຄົງເຫຼືອ</th><th class="num">ຂັ້ນຕໍ່າ</th><th style="width:230px;text-align:right">ຈັດການ</th>
     </tr>
     <?php foreach ($products as $p): ?>
     <tr>
-      <td><?php if ($p['image']): ?><img class="thumb" src="uploads/<?= h($p['image']) ?>"><?php else: ?>📦<?php endif; ?></td>
-      <td><?= h($p['barcode']) ?></td>
-      <td><?= h($p['name']) ?></td>
-      <td><?= h($p['category_name'] ?? '-') ?></td>
+      <td>
+        <?php if ($p['image']): ?>
+          <img class="thumb" src="uploads/<?= h($p['image']) ?>" alt="<?= h($p['name']) ?>">
+        <?php else: ?>
+          <span class="thumb-placeholder"><i data-lucide="package"></i></span>
+        <?php endif; ?>
+      </td>
+      <td style="font-family:var(--font-mono);font-size:13px;color:var(--text-muted)"><?= h($p['barcode']) ?></td>
+      <td><strong><?= h($p['name']) ?></strong></td>
+      <td><span class="badge"><?= h($p['category_name'] ?? 'ທົ່ວໄປ') ?></span></td>
       <td class="num"><?= number_format($p['cost_price']) ?></td>
       <td class="num"><strong><?= number_format($p['sell_price']) ?></strong></td>
       <td class="num">
-        <span class="badge <?= $p['stock_qty'] <= 0 ? 'badge-danger' : ($p['stock_qty'] <= $p['min_stock'] ? 'badge-warning' : 'badge-success') ?>">
-          <?= $p['stock_qty'] ?></span>
+        <span class="badge tabular <?= $p['stock_qty'] <= 0 ? 'badge-danger' : ($p['stock_qty'] <= $p['min_stock'] ? 'badge-warning' : 'badge-success') ?>">
+          <?= number_format($p['stock_qty']) ?>
+        </span>
       </td>
-      <td class="num"><?= $p['min_stock'] ?></td>
-      <td>
-        <button class="btn btn-sm btn-primary" onclick='editProduct(<?= json_encode($p, JSON_UNESCAPED_UNICODE | JSON_HEX_APOS) ?>)'>✏️ ແກ້ໄຂ</button>
-        <button class="btn btn-sm btn-warning" onclick='adjustStock(<?= $p['id'] ?>, <?= json_encode($p['name'], JSON_HEX_APOS) ?>)'>📊 ສະຕ໋ອກ</button>
+      <td class="num" style="color:var(--text-muted)"><?= number_format($p['min_stock']) ?></td>
+      <td style="text-align:right">
+        <button class="btn btn-sm btn-secondary" onclick='editProduct(<?= json_encode($p, JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>
+          <i data-lucide="pencil"></i> ແກ້ໄຂ
+        </button>
+        <button class="btn btn-sm btn-warning" onclick='adjustStock(<?= (int)$p['id'] ?>, <?= json_encode($p['name'], JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>
+          <i data-lucide="sliders-horizontal"></i> ສະຕ໋ອກ
+        </button>
         <form method="post" style="display:inline" onsubmit="return confirm('ລຶບສິນຄ້ານີ້ບໍ່?')">
           <input type="hidden" name="act" value="delete"><input type="hidden" name="id" value="<?= $p['id'] ?>">
-          <button class="btn btn-sm btn-danger">🗑</button>
+          <button class="btn btn-sm btn-danger" title="ລຶບສິນຄ້າ"><i data-lucide="trash-2"></i></button>
         </form>
       </td>
     </tr>
     <?php endforeach; ?>
-    <?php if (!$products): ?><tr><td colspan="9" style="color:#94a3b8;text-align:center">ບໍ່ພົບສິນຄ້າ</td></tr><?php endif; ?>
+    <?php if (!$products): ?>
+      <tr><td colspan="9" style="color:var(--text-muted);text-align:center;padding:32px">ບໍ່ພົບສິນຄ້າໃນລະບົບ</td></tr>
+    <?php endif; ?>
   </table>
 </div>
 
 <!-- Modal ເພີ່ມ/ແກ້ໄຂສິນຄ້າ -->
 <div class="modal-bg" id="productModal">
   <div class="modal">
-    <h3 id="pmTitle">ເພີ່ມສິນຄ້າ</h3>
+    <h3 id="pmTitle"><i data-lucide="package-plus"></i> <span>ເພີ່ມສິນຄ້າ</span></h3>
     <form method="post" enctype="multipart/form-data">
       <input type="hidden" name="act" value="save">
       <input type="hidden" name="id" id="p_id">
       <div class="form-row">
-        <div class="form-group"><label>ບາໂຄດ (ວ່າງ = ສ້າງອັດຕະໂນມັດ)</label>
+        <div class="form-group"><label>ບາໂຄດ <small>(ວ່າງ = ສ້າງອັດຕະໂນມັດ)</small></label>
           <input type="text" name="barcode" id="p_barcode"></div>
         <div class="form-group"><label>ໝວດໝູ່</label>
           <select name="category_id" id="p_cat">
@@ -151,24 +171,24 @@ include __DIR__ . '/header.php';
         <input type="text" name="name" id="p_name" required></div>
       <div class="form-row">
         <div class="form-group"><label>ລາຄາຕົ້ນທຶນ (₭)</label>
-          <input type="number" name="cost_price" id="p_cost" min="0" step="any" value="0"></div>
+          <input type="number" name="cost_price" id="p_cost" min="0" step="any" value="0" class="tabular"></div>
         <div class="form-group"><label>ລາຄາຂາຍ (₭)</label>
-          <input type="number" name="sell_price" id="p_sell" min="0" step="any" value="0"></div>
+          <input type="number" name="sell_price" id="p_sell" min="0" step="any" value="0" class="tabular"></div>
       </div>
       <div class="form-row">
         <div class="form-group"><label>ຈຳນວນຄົງຄັງ</label>
-          <input type="number" name="stock_qty" id="p_stock" value="0"></div>
-        <div class="form-group"><label>ຈຳນວນຂັ້ນຕໍ່າ (ແຈ້ງເຕືອນ)</label>
-          <input type="number" name="min_stock" id="p_min" value="5"></div>
+          <input type="number" name="stock_qty" id="p_stock" value="0" class="tabular"></div>
+        <div class="form-group"><label>ຈຳນວນຂັ້ນຕໍ່າ <small>(ແຈ້ງເຕືອນ)</small></label>
+          <input type="number" name="min_stock" id="p_min" value="5" class="tabular"></div>
       </div>
       <div class="form-group">
-        <label>ຮູບສິນຄ້າ (ເລືອກຈາກຄອມພິວເຕີ: jpg, png, gif, webp)</label>
+        <label>ຮູບສິນຄ້າ <small>(jpg, png, gif, webp)</small></label>
         <input type="file" name="image" accept="image/*" onchange="previewImg(this)">
-        <img id="p_preview" style="max-width:110px;margin-top:8px;border-radius:8px;display:none">
+        <img id="p_preview" style="max-width:110px;margin-top:8px;border-radius:8px;border:1px solid var(--border);display:none">
       </div>
-      <div style="display:flex;gap:10px;margin-top:14px">
-        <button type="button" class="btn btn-block" onclick="closeModal('productModal')">ປິດ</button>
-        <button type="submit" class="btn btn-success btn-block">💾 ບັນທຶກ</button>
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <button type="button" class="btn btn-secondary btn-block" onclick="closeModal('productModal')">ຍົກເລີກ</button>
+        <button type="submit" class="btn btn-success btn-block"><i data-lucide="check"></i> ບັນທຶກ</button>
       </div>
     </form>
   </div>
@@ -177,17 +197,17 @@ include __DIR__ . '/header.php';
 <!-- Modal ປັບສະຕ໋ອກ -->
 <div class="modal-bg" id="adjustModal">
   <div class="modal">
-    <h3>📊 ປັບ / ກວດນັບສະຕ໋ອກ — <span id="a_name"></span></h3>
+    <h3><i data-lucide="sliders-horizontal"></i> <span>ປັບ / ກວດນັບສະຕ໋ອກ — <span id="a_name"></span></span></h3>
     <form method="post">
       <input type="hidden" name="act" value="adjust">
       <input type="hidden" name="id" id="a_id">
-      <div class="form-group"><label>ຈຳນວນປັບ (ບວກ = ເພີ່ມ, ລົບ = ຫັກອອກ ເຊັ່ນ -3)</label>
-        <input type="number" name="change_qty" required></div>
+      <div class="form-group"><label>ຈຳນວນປັບ <small>(ບວກ = ເພີ່ມ, ລົບ = ຫັກອອກ ເຊັ່ນ -3)</small></label>
+        <input type="number" name="change_qty" required class="tabular"></div>
       <div class="form-group"><label>ເຫດຜົນ</label>
         <input type="text" name="reason" placeholder="ເຊັ່ນ: ກວດນັບ, ເສຍຫາຍ, ໝົດອາຍຸ"></div>
-      <div style="display:flex;gap:10px;margin-top:14px">
-        <button type="button" class="btn btn-block" onclick="closeModal('adjustModal')">ປິດ</button>
-        <button type="submit" class="btn btn-warning btn-block">ບັນທຶກ</button>
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <button type="button" class="btn btn-secondary btn-block" onclick="closeModal('adjustModal')">ຍົກເລີກ</button>
+        <button type="submit" class="btn btn-warning btn-block"><i data-lucide="check"></i> ຢືນຢັນປັບສະຕ໋ອກ</button>
       </div>
     </form>
   </div>
@@ -197,7 +217,7 @@ include __DIR__ . '/header.php';
 function openModal(id){document.getElementById(id).classList.add('show')}
 function closeModal(id){document.getElementById(id).classList.remove('show')}
 function editProduct(p){
-  document.getElementById('pmTitle').textContent = p ? '✏️ ແກ້ໄຂສິນຄ້າ' : '➕ ເພີ່ມສິນຄ້າ';
+  document.querySelector('#pmTitle span').textContent = p ? 'ແກ້ໄຂສິນຄ້າ' : 'ເພີ່ມສິນຄ້າ';
   document.getElementById('p_id').value      = p ? p.id : '';
   document.getElementById('p_barcode').value = p ? p.barcode : '';
   document.getElementById('p_name').value    = p ? p.name : '';
