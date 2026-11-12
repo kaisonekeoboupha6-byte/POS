@@ -5,3 +5,7 @@ presentation.html
 mockup_pos.html
 *.doc
 *.docx
+*.pptx
+.worktrees/
+scripts/
+
