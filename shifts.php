@@ -25,14 +25,31 @@ if ($my_shift) {
     $shift_summary = $st->fetch();
 }
 
-// ປະຫວັດກະ: manager ເຫັນທຸກຄົນ, cashier ເຫັນແຕ່ຂອງຕົນເອງ
-$sql = "SELECT sh.*, u.fullname,
-          (SELECT COUNT(*) FROM sales s WHERE s.shift_id=sh.id AND s.status='completed') bills,
-          (SELECT COALESCE(SUM(total),0) FROM sales s WHERE s.shift_id=sh.id AND s.status='completed') sales_total
+// ປະຫວັດກະ: manager ເຫັນທຸກຄົນ, cashier ເຫັນແຕ່ຂອງຕົນເອງ (batch aggregate ແທນ correlated subqueries)
+$sql = "SELECT sh.*, u.fullname
         FROM shifts sh JOIN users u ON u.id=sh.user_id";
 if (!$is_manager) $sql .= ' WHERE sh.user_id = ' . (int)$u['id'];
 $sql .= ' ORDER BY sh.id DESC LIMIT 50';
 $shifts = $pdo->query($sql)->fetchAll();
+if ($shifts) {
+    $shiftIds = array_map(fn($row) => (int)$row['id'], $shifts);
+    $in = implode(',', array_fill(0, count($shiftIds), '?'));
+    $stStats = $pdo->prepare(
+        "SELECT shift_id, COUNT(*) bills, COALESCE(SUM(total),0) sales_total
+         FROM sales WHERE status='completed' AND shift_id IN ($in) GROUP BY shift_id"
+    );
+    $stStats->execute($shiftIds);
+    $statsMap = [];
+    foreach ($stStats->fetchAll() as $sr) {
+        $statsMap[(int)$sr['shift_id']] = $sr;
+    }
+    foreach ($shifts as &$sh) {
+        $sr = $statsMap[(int)$sh['id']] ?? null;
+        $sh['bills'] = $sr ? (int)$sr['bills'] : 0;
+        $sh['sales_total'] = $sr ? (float)$sr['sales_total'] : 0;
+    }
+    unset($sh);
+}
 
 include __DIR__ . '/header.php';
 ?>

@@ -26,7 +26,9 @@ switch ($action) {
     case 'all_products':
     case 'products': {
         $products = $pdo->query(
-            "SELECT p.*, c.name AS category_name FROM products p
+            "SELECT p.id, p.barcode, p.name, p.category_id, p.sell_price, p.stock_qty, p.min_stock, p.image,
+                    c.name AS category_name
+             FROM products p
              LEFT JOIN categories c ON c.id = p.category_id
              WHERE p.status = 1 ORDER BY p.name"
         )->fetchAll();
@@ -67,21 +69,43 @@ switch ($action) {
                 $st->execute([(int)$input['resume_id']]);
             }
 
-            // ອ່ານລາຄາ/ຕົ້ນທຶນ/ສະຕ໋ອກ ຈາກຖານຂໍ້ມູນ (ບໍ່ເຊື່ອລາຄາຈາກ client)
+            // ອ່ານລາຄາ/ຕົ້ນທຶນ/ສະຕ໋ອກ ຈາກຖານຂໍ້ມູນແບບ batch (ປ້ອງກັນ N+1 ແລະ deadlock)
+            $lockIds = [];
+            foreach ($items as $it) {
+                $pid = (int)($it['id'] ?? 0);
+                if ($pid > 0) $lockIds[$pid] = $pid;
+            }
+            if (!$lockIds) throw new Exception('ບໍ່ມີສິນຄ້າໃນບິນ');
+            $lockIds = array_values($lockIds);
+            sort($lockIds, SORT_NUMERIC);
+
+            $in = implode(',', array_fill(0, count($lockIds), '?'));
+            $stLock = $pdo->prepare("SELECT id, name, sell_price, cost_price, stock_qty FROM products WHERE id IN ($in) ORDER BY id FOR UPDATE");
+            $stLock->execute($lockIds);
+            $prodMap = [];
+            $remainingStock = [];
+            foreach ($stLock->fetchAll() as $row) {
+                $pid = (int)$row['id'];
+                $prodMap[$pid] = $row;
+                $remainingStock[$pid] = (int)$row['stock_qty'];
+            }
+
             $subtotal = 0;
             $lines = [];
-            $stLock = $pdo->prepare('SELECT * FROM products WHERE id = ? FOR UPDATE');
+            $deductByPid = [];
             foreach ($items as $it) {
-                $qty = max(1, (int)$it['qty']);
-                $stLock->execute([(int)$it['id']]);
-                $p = $stLock->fetch();
-                if (!$p) throw new Exception('ບໍ່ພົບສິນຄ້າ ID ' . (int)$it['id']);
-                if (!$hold && $p['stock_qty'] < $qty) {
+                $pid = (int)($it['id'] ?? 0);
+                $qty = max(1, (int)($it['qty'] ?? 1));
+                if (!isset($prodMap[$pid])) throw new Exception('ບໍ່ພົບສິນຄ້າ ID ' . $pid);
+                $p = $prodMap[$pid];
+                $remainingStock[$pid] -= $qty;
+                if (!$hold && $remainingStock[$pid] < 0) {
                     throw new Exception('ສະຕ໋ອກບໍ່ພຽງພໍ: ' . $p['name'] . ' (ເຫຼືອ ' . $p['stock_qty'] . ')');
                 }
                 $line_total = $p['sell_price'] * $qty;
                 $subtotal  += $line_total;
                 $lines[] = ['p' => $p, 'qty' => $qty, 'total' => $line_total];
+                $deductByPid[$pid] = ($deductByPid[$pid] ?? 0) + $qty;
             }
 
             // ສ່ວນຫຼຸດ % ຫຼື ຈຳນວນເງິນ (ປັດເສດເປັນຈຳນວນເຕັມກີບ)
@@ -148,18 +172,34 @@ switch ($action) {
             ]);
             $sale_id = (int)$pdo->lastInsertId();
 
-            $stItem  = $pdo->prepare(
-                'INSERT INTO sale_items (sale_id, product_id, product_name, qty, price, cost, total)
-                 VALUES (?,?,?,?,?,?,?)'
-            );
-            $stStock = $pdo->prepare('UPDATE products SET stock_qty = stock_qty - ? WHERE id = ?');
+            $itemPlaceholders = implode(',', array_fill(0, count($lines), '(?,?,?,?,?,?,?)'));
+            $itemValues = [];
             foreach ($lines as $ln) {
-                $stItem->execute([
-                    $sale_id, $ln['p']['id'], $ln['p']['name'], $ln['qty'],
-                    $ln['p']['sell_price'], $ln['p']['cost_price'], $ln['total'],
-                ]);
-                // ຕັດສະຕ໋ອກ Real-time ສະເພາະບິນທີ່ຈ່າຍສຳເລັດ (ບິນພັກຍັງບໍ່ຕັດ)
-                if (!$hold) $stStock->execute([$ln['qty'], $ln['p']['id']]);
+                $itemValues[] = $sale_id;
+                $itemValues[] = $ln['p']['id'];
+                $itemValues[] = $ln['p']['name'];
+                $itemValues[] = $ln['qty'];
+                $itemValues[] = $ln['p']['sell_price'];
+                $itemValues[] = $ln['p']['cost_price'];
+                $itemValues[] = $ln['total'];
+            }
+            $pdo->prepare("INSERT INTO sale_items (sale_id, product_id, product_name, qty, price, cost, total) VALUES $itemPlaceholders")
+                ->execute($itemValues);
+
+            // ຕັດສະຕ໋ອກ Real-time ແບບ batch (ສະເພາະບິນທີ່ຈ່າຍສຳເລັດ)
+            if (!$hold && $deductByPid) {
+                ksort($deductByPid, SORT_NUMERIC);
+                $cases = [];
+                $uParams = [];
+                foreach ($deductByPid as $pid => $dq) {
+                    $cases[] = 'WHEN ? THEN stock_qty - ?';
+                    $uParams[] = $pid;
+                    $uParams[] = $dq;
+                }
+                $uIds = array_keys($deductByPid);
+                $uIn = implode(',', array_fill(0, count($uIds), '?'));
+                $pdo->prepare('UPDATE products SET stock_qty = CASE id ' . implode(' ', $cases) . " END WHERE id IN ($uIn)")
+                    ->execute(array_merge($uParams, $uIds));
             }
 
             // ບັນທຶກຄະແນນ
@@ -242,6 +282,7 @@ switch ($action) {
         if (get_open_shift($u['id'])) out(['ok' => false, 'error' => 'ທ່ານມີກະທີ່ເປີດຢູ່ແລ້ວ']);
         $st = $pdo->prepare('INSERT INTO shifts (user_id, opening_cash) VALUES (?, ?)');
         $st->execute([$u['id'], max(0, (float)($input['opening_cash'] ?? 0))]);
+        clear_open_shift_cache($u['id']);
         out(['ok' => true, 'shift_id' => $pdo->lastInsertId()]);
     }
 
@@ -262,6 +303,7 @@ switch ($action) {
              status = 'closed', closed_at = NOW() WHERE id = ?"
         );
         $st->execute([$closing, $expected, $closing - $expected, $shift['id']]);
+        clear_open_shift_cache($u['id']);
         $diff = $closing - $expected;
         out(['ok' => true, 'expected' => $expected, 'difference' => $diff, 'diff' => $diff]);
     }

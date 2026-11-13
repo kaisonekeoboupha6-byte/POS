@@ -21,12 +21,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'cancel_s
     $sale = $st->fetch();
     if ($sale) {
         $pdo->beginTransaction();
-        // ຄືນສະຕ໋ອກ
-        $items = $pdo->prepare('SELECT * FROM sale_items WHERE sale_id=?');
+        // ຄືນສະຕ໋ອກແບບ batch
+        $items = $pdo->prepare('SELECT product_id, qty FROM sale_items WHERE sale_id=?');
         $items->execute([$sid]);
-        $stBack = $pdo->prepare('UPDATE products SET stock_qty = stock_qty + ? WHERE id = ?');
+        $restockByPid = [];
         foreach ($items->fetchAll() as $it) {
-            if ($it['product_id']) $stBack->execute([$it['qty'], $it['product_id']]);
+            if ($it['product_id']) {
+                $pid = (int)$it['product_id'];
+                $restockByPid[$pid] = ($restockByPid[$pid] ?? 0) + (int)$it['qty'];
+            }
+        }
+        if ($restockByPid) {
+            ksort($restockByPid, SORT_NUMERIC);
+            $cases = [];
+            $uParams = [];
+            foreach ($restockByPid as $pid => $rq) {
+                $cases[] = 'WHEN ? THEN stock_qty + ?';
+                $uParams[] = $pid;
+                $uParams[] = $rq;
+            }
+            $uIds = array_keys($restockByPid);
+            $uIn = implode(',', array_fill(0, count($uIds), '?'));
+            $pdo->prepare('UPDATE products SET stock_qty = CASE id ' . implode(' ', $cases) . " END WHERE id IN ($uIn)")
+                ->execute(array_merge($uParams, $uIds));
         }
         // ຄືນຄະແນນ
         if ($sale['customer_id']) {
@@ -292,52 +309,59 @@ $tabs = [
     <?php endforeach; ?>
   </table>
   </div>
-  <script src="assets/vendor/chart.umd.min.js"></script>
+  <script src="assets/vendor/chart.umd.min.js?v=<?= asset_v('assets/vendor/chart.umd.min.js') ?>" defer></script>
   <script>
   (function () {
-    var canvas = document.getElementById('dailyChart');
-    if (!canvas || typeof Chart === 'undefined') return;
-    var labels = <?= json_encode(array_map(fn($r) => date('d/m', strtotime($r['d'])), $rows)) ?>;
-    var data = <?= json_encode(array_map(fn($r) => (float)$r['total'], $rows)) ?>;
-    var dailyChart = null;
-    function buildDailyChart() {
-      var cs = getComputedStyle(document.documentElement);
-      var textMuted = cs.getPropertyValue('--text-muted').trim() || '#475569';
-      var borderCol = cs.getPropertyValue('--border').trim() || '#e2e8f0';
-      var primary = cs.getPropertyValue('--primary').trim() || '#2563eb';
-      var ctx = canvas.getContext('2d');
-      var grad = ctx.createLinearGradient(0, 0, 0, 220);
-      grad.addColorStop(0, 'rgba(37, 99, 235, 0.25)');
-      grad.addColorStop(1, 'rgba(37, 99, 235, 0.01)');
-      if (dailyChart) dailyChart.destroy();
-      dailyChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: labels,
-          datasets: [{
-            label: 'ຍອດຂາຍ (₭)',
-            data: data,
-            borderColor: primary,
-            backgroundColor: grad,
-            borderWidth: 2.5,
-            pointRadius: 4,
-            fill: true,
-            tension: 0.28
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: {
-            y: { beginAtZero: true, grid: { color: borderCol }, ticks: { color: textMuted } },
-            x: { grid: { display: false }, ticks: { color: textMuted } }
+    function initDailyChart() {
+      var canvas = document.getElementById('dailyChart');
+      if (!canvas || typeof Chart === 'undefined') return;
+      var labels = <?= json_encode(array_map(fn($r) => date('d/m', strtotime($r['d'])), $rows)) ?>;
+      var data = <?= json_encode(array_map(fn($r) => (float)$r['total'], $rows)) ?>;
+      var dailyChart = null;
+      function buildDailyChart() {
+        var cs = getComputedStyle(document.documentElement);
+        var textMuted = cs.getPropertyValue('--text-muted').trim() || '#475569';
+        var borderCol = cs.getPropertyValue('--border').trim() || '#e2e8f0';
+        var primary = cs.getPropertyValue('--primary').trim() || '#2563eb';
+        var ctx = canvas.getContext('2d');
+        var grad = ctx.createLinearGradient(0, 0, 0, 220);
+        grad.addColorStop(0, 'rgba(37, 99, 235, 0.25)');
+        grad.addColorStop(1, 'rgba(37, 99, 235, 0.01)');
+        if (dailyChart) dailyChart.destroy();
+        dailyChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: 'ຍອດຂາຍ (₭)',
+              data: data,
+              borderColor: primary,
+              backgroundColor: grad,
+              borderWidth: 2.5,
+              pointRadius: 4,
+              fill: true,
+              tension: 0.28
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: { beginAtZero: true, grid: { color: borderCol }, ticks: { color: textMuted } },
+              x: { grid: { display: false }, ticks: { color: textMuted } }
+            }
           }
-        }
-      });
+        });
+      }
+      buildDailyChart();
+      document.addEventListener('pos:themechange', buildDailyChart);
     }
-    buildDailyChart();
-    document.addEventListener('pos:themechange', buildDailyChart);
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initDailyChart);
+    } else {
+      initDailyChart();
+    }
   })();
   </script>
   <?php endif; ?>

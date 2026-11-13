@@ -10,7 +10,9 @@ $is_admin   = $u['role'] === 'admin';
 $is_manager = in_array($u['role'], ['admin', 'manager']);
 $open_shift = get_open_shift($u['id']);
 $low_stock_count = $is_manager
-    ? (int)$pdo->query('SELECT COUNT(*) FROM products WHERE status = 1 AND stock_qty <= min_stock')->fetchColumn()
+    ? (isset($precomputed_low_stock_count)
+        ? (int)$precomputed_low_stock_count
+        : (int)$pdo->query('SELECT COUNT(*) FROM products WHERE status = 1 AND stock_qty <= min_stock')->fetchColumn())
     : 0;
 
 $menu_groups = [
@@ -54,8 +56,8 @@ $initials = strtoupper(substr(preg_replace('/[^a-zA-Z0-9]/', '', $u['username'] 
     } catch (e) {}
   })();
 </script>
-<link rel="stylesheet" href="style.css">
-<script src="assets/vendor/lucide.min.js"></script>
+<link rel="stylesheet" href="style.css?v=<?= asset_v('style.css') ?>">
+<script src="assets/vendor/lucide.min.js?v=<?= asset_v('assets/vendor/lucide.min.js') ?>" defer></script>
 </head>
 <body>
 <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeMobileSidebar()"></div>

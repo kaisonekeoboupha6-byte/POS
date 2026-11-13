@@ -41,16 +41,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $q = trim($_GET['q'] ?? '');
 $view_id = (int)($_GET['view'] ?? 0);
 
-$sql = 'SELECT c.*,
-          (SELECT COUNT(*) FROM sales s WHERE s.customer_id=c.id AND s.status="completed") buy_count,
-          (SELECT COALESCE(SUM(total),0) FROM sales s WHERE s.customer_id=c.id AND s.status="completed") buy_total
-        FROM customers c';
+$sql = 'SELECT c.* FROM customers c';
 $params = [];
 if ($q !== '') { $sql .= ' WHERE c.name LIKE ? OR c.phone LIKE ? OR c.code LIKE ?'; $params = ["%$q%", "%$q%", "%$q%"]; }
 $sql .= ' ORDER BY c.id DESC';
 $st = $pdo->prepare($sql);
 $st->execute($params);
 $customers = $st->fetchAll();
+if ($customers) {
+    $custIds = array_map(fn($row) => (int)$row['id'], $customers);
+    $in = implode(',', array_fill(0, count($custIds), '?'));
+    $stCustStats = $pdo->prepare(
+        "SELECT customer_id, COUNT(*) buy_count, COALESCE(SUM(total),0) buy_total
+         FROM sales WHERE status='completed' AND customer_id IN ($in) GROUP BY customer_id"
+    );
+    $stCustStats->execute($custIds);
+    $custMap = [];
+    foreach ($stCustStats->fetchAll() as $cr) {
+        $custMap[(int)$cr['customer_id']] = $cr;
+    }
+    foreach ($customers as &$c) {
+        $cr = $custMap[(int)$c['id']] ?? null;
+        $c['buy_count'] = $cr ? (int)$cr['buy_count'] : 0;
+        $c['buy_total'] = $cr ? (float)$cr['buy_total'] : 0;
+    }
+    unset($c);
+}
 
 // ປະຫວັດການຊື້ຂອງລູກຄ້າຄົນທີ່ເລືອກ
 $history = []; $points_log = []; $viewing = null;

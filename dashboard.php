@@ -8,43 +8,65 @@ $page = 'dashboard';
 $title = 'ໜ້າຫຼັກ (Dashboard)';
 $u = current_user();
 
-// ຕົວເລກສະຫຼຸບ
-$today_sales = $pdo->query(
-    "SELECT COALESCE(SUM(total),0) t, COUNT(*) c FROM sales
-     WHERE status='completed' AND DATE(created_at)=CURDATE()")->fetch();
-$month_sales = $pdo->query(
-    "SELECT COALESCE(SUM(total),0) t FROM sales
-     WHERE status='completed' AND YEAR(created_at)=YEAR(CURDATE()) AND MONTH(created_at)=MONTH(CURDATE())")->fetch();
-$product_count = $pdo->query('SELECT COUNT(*) c FROM products WHERE status=1')->fetch()['c'];
-$low_stock = $pdo->query(
-    'SELECT * FROM products WHERE status=1 AND stock_qty <= min_stock ORDER BY stock_qty ASC')->fetchAll();
-$customer_count = $pdo->query('SELECT COUNT(*) c FROM customers')->fetch()['c'];
+// ຕົວເລກສະຫຼຸບ (SARGable index range + ລວມຍອດມື້ນີ້/ເດືອນນີ້ໃນ 1 query)
+$todayStart     = date('Y-m-d 00:00:00');
+$tomorrowStart  = date('Y-m-d 00:00:00', strtotime('+1 day'));
+$monthStart     = date('Y-m-01 00:00:00');
+$nextMonthStart = date('Y-m-01 00:00:00', strtotime('first day of next month'));
+$weekStart      = date('Y-m-d 00:00:00', strtotime('-6 days'));
 
-// ຍອດຂາຍ 7 ວັນຫຼ້າສຸດ
+$stSummary = $pdo->prepare(
+    "SELECT
+       COALESCE(SUM(CASE WHEN created_at >= ? AND created_at < ? THEN total ELSE 0 END), 0) AS today_t,
+       SUM(CASE WHEN created_at >= ? AND created_at < ? THEN 1 ELSE 0 END) AS today_c,
+       COALESCE(SUM(total), 0) AS month_t
+     FROM sales
+     WHERE status = 'completed' AND created_at >= ? AND created_at < ?"
+);
+$stSummary->execute([$todayStart, $tomorrowStart, $todayStart, $tomorrowStart, $monthStart, $nextMonthStart]);
+$sumRow = $stSummary->fetch();
+$today_sales = ['t' => (float)$sumRow['today_t'], 'c' => (int)$sumRow['today_c']];
+$month_sales = ['t' => (float)$sumRow['month_t']];
+
+$product_count = $pdo->query('SELECT COUNT(*) FROM products WHERE status=1')->fetchColumn();
+$low_stock = $pdo->query(
+    'SELECT id, barcode, name, stock_qty, min_stock FROM products WHERE status=1 AND stock_qty <= min_stock ORDER BY stock_qty ASC'
+)->fetchAll();
+$precomputed_low_stock_count = count($low_stock);
+$customer_count = $pdo->query('SELECT COUNT(*) FROM customers')->fetchColumn();
+
+// ຍອດຂາຍ 7 ວັນຫຼ້າສຸດ (SARGable range)
 $chart = [];
 for ($i = 6; $i >= 0; $i--) {
     $d = date('Y-m-d', strtotime("-$i days"));
     $chart[$d] = 0;
 }
-$rows = $pdo->query(
+$stChart = $pdo->prepare(
     "SELECT DATE(created_at) d, SUM(total) t FROM sales
-     WHERE status='completed' AND created_at >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
-     GROUP BY DATE(created_at)")->fetchAll();
-foreach ($rows as $r) $chart[$r['d']] = (float)$r['t'];
+     WHERE status='completed' AND created_at >= ? AND created_at < ?
+     GROUP BY DATE(created_at)"
+);
+$stChart->execute([$weekStart, $tomorrowStart]);
+foreach ($stChart->fetchAll() as $r) $chart[$r['d']] = (float)$r['t'];
 $week_total = array_sum($chart);
 
-// ສິນຄ້າຂາຍດີ 5 ອັນດັບ (ເດືອນນີ້)
-$top = $pdo->query(
+// ສິນຄ້າຂາຍດີ 5 ອັນດັບ (ເດືອນນີ້, SARGable range)
+$stTop = $pdo->prepare(
     "SELECT si.product_name, SUM(si.qty) qty, SUM(si.total) total
      FROM sale_items si JOIN sales s ON s.id = si.sale_id
-     WHERE s.status='completed' AND YEAR(s.created_at)=YEAR(CURDATE()) AND MONTH(s.created_at)=MONTH(CURDATE())
-     GROUP BY si.product_name ORDER BY qty DESC LIMIT 5")->fetchAll();
+     WHERE s.status='completed' AND s.created_at >= ? AND s.created_at < ?
+     GROUP BY si.product_name ORDER BY qty DESC LIMIT 5"
+);
+$stTop->execute([$monthStart, $nextMonthStart]);
+$top = $stTop->fetchAll();
 $max_top_qty = $top ? max(array_map(fn($x) => (int)$x['qty'], $top)) : 1;
 
 // ບິນຫຼ້າສຸດ
 $recent = $pdo->query(
-    "SELECT s.*, u.fullname FROM sales s JOIN users u ON u.id=s.user_id
-     ORDER BY s.id DESC LIMIT 8")->fetchAll();
+    "SELECT s.id, s.invoice_no, s.total, s.payment_method, s.status, s.created_at, u.fullname
+     FROM sales s JOIN users u ON u.id=s.user_id
+     ORDER BY s.id DESC LIMIT 8"
+)->fetchAll();
 
 include __DIR__ . '/header.php';
 ?>
@@ -225,82 +247,89 @@ include __DIR__ . '/header.php';
   </div>
 </div>
 
-<script src="assets/vendor/chart.umd.min.js"></script>
+<script src="assets/vendor/chart.umd.min.js?v=<?= asset_v('assets/vendor/chart.umd.min.js') ?>" defer></script>
 <script>
 (function () {
-  var canvas = document.getElementById('salesChart');
-  if (!canvas || typeof Chart === 'undefined') return;
-  var labels = <?= json_encode(array_map(fn($d) => date('d/m', strtotime($d)), array_keys($chart))) ?>;
-  var values = <?= json_encode(array_values($chart)) ?>;
-  var salesChart = null;
+  function initDashboardChart() {
+    var canvas = document.getElementById('salesChart');
+    if (!canvas || typeof Chart === 'undefined') return;
+    var labels = <?= json_encode(array_map(fn($d) => date('d/m', strtotime($d)), array_keys($chart))) ?>;
+    var values = <?= json_encode(array_values($chart)) ?>;
+    var salesChart = null;
 
-  function buildChart() {
-    var cs = getComputedStyle(document.documentElement);
-    var textMuted = cs.getPropertyValue('--text-muted').trim() || '#475569';
-    var borderCol = cs.getPropertyValue('--border').trim() || '#e2e8f0';
-    var primary = cs.getPropertyValue('--primary').trim() || '#2563eb';
-    var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    function buildChart() {
+      var cs = getComputedStyle(document.documentElement);
+      var textMuted = cs.getPropertyValue('--text-muted').trim() || '#475569';
+      var borderCol = cs.getPropertyValue('--border').trim() || '#e2e8f0';
+      var primary = cs.getPropertyValue('--primary').trim() || '#2563eb';
+      var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
 
-    var ctx = canvas.getContext('2d');
-    var grad = ctx.createLinearGradient(0, 0, 0, 240);
-    grad.addColorStop(0, isDark ? 'rgba(59, 130, 246, 0.85)' : 'rgba(37, 99, 235, 0.9)');
-    grad.addColorStop(1, isDark ? 'rgba(59, 130, 246, 0.25)' : 'rgba(37, 99, 235, 0.35)');
+      var ctx = canvas.getContext('2d');
+      var grad = ctx.createLinearGradient(0, 0, 0, 240);
+      grad.addColorStop(0, isDark ? 'rgba(59, 130, 246, 0.85)' : 'rgba(37, 99, 235, 0.9)');
+      grad.addColorStop(1, isDark ? 'rgba(59, 130, 246, 0.25)' : 'rgba(37, 99, 235, 0.35)');
 
-    if (salesChart) salesChart.destroy();
-    salesChart = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: labels,
-        datasets: [{
-          label: 'ຍອດຂາຍ (₭)',
-          data: values,
-          backgroundColor: grad,
-          borderColor: primary,
-          borderWidth: 1,
-          borderRadius: 8,
-          borderSkipped: false,
-          maxBarThickness: 44
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            padding: 10,
-            cornerRadius: 8,
-            callbacks: {
-              label: function(context) {
-                return new Intl.NumberFormat('en-US').format(context.raw) + ' ₭';
-              }
-            }
-          }
+      if (salesChart) salesChart.destroy();
+      salesChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'ຍອດຂາຍ (₭)',
+            data: values,
+            backgroundColor: grad,
+            borderColor: primary,
+            borderWidth: 1,
+            borderRadius: 8,
+            borderSkipped: false,
+            maxBarThickness: 44
+          }]
         },
-        scales: {
-          y: {
-            beginAtZero: true,
-            grid: { color: borderCol },
-            border: { display: false },
-            ticks: {
-              color: textMuted,
-              callback: function(val) {
-                return new Intl.NumberFormat('en-US').format(val) + ' ₭';
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              padding: 10,
+              cornerRadius: 8,
+              callbacks: {
+                label: function(context) {
+                  return new Intl.NumberFormat('en-US').format(context.raw) + ' ₭';
+                }
               }
             }
           },
-          x: {
-            grid: { display: false },
-            border: { display: false },
-            ticks: { color: textMuted }
+          scales: {
+            y: {
+              beginAtZero: true,
+              grid: { color: borderCol },
+              border: { display: false },
+              ticks: {
+                color: textMuted,
+                callback: function(val) {
+                  return new Intl.NumberFormat('en-US').format(val) + ' ₭';
+                }
+              }
+            },
+            x: {
+              grid: { display: false },
+              border: { display: false },
+              ticks: { color: textMuted }
+            }
           }
         }
-      }
-    });
-  }
+      });
+    }
 
-  buildChart();
-  document.addEventListener('pos:themechange', buildChart);
+    buildChart();
+    document.addEventListener('pos:themechange', buildChart);
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initDashboardChart);
+  } else {
+    initDashboardChart();
+  }
 })();
 </script>
 <?php include __DIR__ . '/footer.php'; ?>
