@@ -70,6 +70,8 @@ CREATE TABLE products (
   image VARCHAR(255) DEFAULT NULL COMMENT 'ຊື່ໄຟລ໌ຮູບໃນໂຟນເດີ uploads/',
   status TINYINT(1) NOT NULL DEFAULT 1,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_products_status_name (status, name),
+  KEY idx_products_status_stock_min (status, stock_qty, min_stock),
   FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
@@ -110,6 +112,7 @@ CREATE TABLE shifts (
   status ENUM('open','closed') NOT NULL DEFAULT 'open',
   opened_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   closed_at TIMESTAMP NULL DEFAULT NULL,
+  KEY idx_shifts_user_status_id (user_id, status, id),
   FOREIGN KEY (user_id) REFERENCES users(id)
 ) ENGINE=InnoDB;
 
@@ -139,6 +142,9 @@ CREATE TABLE sales (
   status ENUM('completed','held','cancelled') NOT NULL DEFAULT 'completed',
   note VARCHAR(255) DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_sales_status_created (status, created_at),
+  KEY idx_sales_shift_status_method (shift_id, status, payment_method),
+  KEY idx_sales_customer_created (customer_id, created_at),
   FOREIGN KEY (user_id) REFERENCES users(id),
   FOREIGN KEY (shift_id) REFERENCES shifts(id) ON DELETE SET NULL,
   FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL
@@ -211,6 +217,7 @@ CREATE TABLE point_transactions (
   type ENUM('earn','redeem','adjust') NOT NULL,
   note VARCHAR(255) DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_points_cust_id (customer_id, id),
   FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
   FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;

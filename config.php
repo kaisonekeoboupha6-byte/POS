@@ -79,6 +79,15 @@ function money($n) {
     return number_format((float)$n) . ' ₭';
 }
 
+function asset_v($rel_path) {
+    static $versions = [];
+    if (!isset($versions[$rel_path])) {
+        $full = __DIR__ . '/' . ltrim($rel_path, '/');
+        $versions[$rel_path] = is_file($full) ? (string)filemtime($full) : '1';
+    }
+    return $versions[$rel_path];
+}
+
 function flash_set($msg, $type = 'success') {
     $_SESSION['flash'] = ['msg' => $msg, 'type' => $type];
 }
@@ -118,10 +127,30 @@ function upload_image($file) {
     return null;
 }
 
-/** ຫາກະທີ່ຍັງເປີດຢູ່ຂອງຜູ້ໃຊ້ */
-function get_open_shift($user_id) {
+/** ຫາກະທີ່ຍັງເປີດຢູ່ຂອງຜູ້ໃຊ້ (cached per request) */
+function &open_shift_request_cache() {
+    static $cache = [];
+    return $cache;
+}
+
+function clear_open_shift_cache($user_id = null) {
+    $cache = &open_shift_request_cache();
+    if ($user_id === null) {
+        $cache = [];
+    } else {
+        unset($cache[(int)$user_id]);
+    }
+}
+
+function get_open_shift($user_id, $fresh = false) {
     global $pdo;
+    $uid = (int)$user_id;
+    $cache = &open_shift_request_cache();
+    if (!$fresh && array_key_exists($uid, $cache)) {
+        return $cache[$uid];
+    }
     $st = $pdo->prepare("SELECT * FROM shifts WHERE user_id = ? AND status = 'open' ORDER BY id DESC LIMIT 1");
-    $st->execute([$user_id]);
-    return $st->fetch() ?: null;
+    $st->execute([$uid]);
+    $cache[$uid] = $st->fetch() ?: null;
+    return $cache[$uid];
 }
