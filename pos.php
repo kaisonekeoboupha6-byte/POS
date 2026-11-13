@@ -665,7 +665,7 @@ $store_name  = get_setting('store_name', 'POS Terminal');
         <!-- Cash Panel -->
         <div id="cashPanel">
           <label for="paidAmount" style="display: block; font-size: 13px; font-weight: 700; margin-bottom: 6px;">ຮັບເງິນມາ (₭):</label>
-          <input type="number" id="paidAmount" oninput="calcChange()" class="cash-input tabular" placeholder="0" style="width: 100%; height: 52px; font-size: 24px; font-weight: 800; text-align: right; border: 2px solid var(--border-strong); padding: 0 14px;">
+          <input type="number" id="paidAmount" oninput="calcChange()" onkeydown="if(event.key==='Enter'){event.preventDefault();confirmPay();}" class="cash-input tabular" placeholder="0" style="width: 100%; height: 52px; font-size: 24px; font-weight: 800; text-align: right; border: 2px solid var(--border-strong); padding: 0 14px;">
 
           <div class="quick-cash-row">
             <button type="button" class="quick-cash-btn" onclick="setExactPaid()">ພໍດີບິນ</button>
@@ -806,7 +806,7 @@ $store_name  = get_setting('store_name', 'POS Terminal');
         </button>
       </div>
       <div style="padding: 16px;">
-        <input type="number" id="numpadInput" class="clean-input tabular" style="height: 50px; text-align: center; font-size: 26px; font-weight: 800;" value="1">
+        <input type="number" id="numpadInput" onkeydown="if(event.key==='Enter'){event.preventDefault();confirmNum();}" class="clean-input tabular" style="height: 50px; text-align: center; font-size: 26px; font-weight: 800;" value="1">
         <div class="numpad-grid">
           <button type="button" class="numpad-btn" onclick="pressNum(1)">1</button>
           <button type="button" class="numpad-btn" onclick="pressNum(2)">2</button>
@@ -1644,6 +1644,11 @@ $store_name  = get_setting('store_name', 'POS Terminal');
       } else if (e.key === 'Escape') {
         if (confirmResolver) {
           resolveConfirm(false);
+          return;
+        }
+        const srModal = document.getElementById('shiftResultModal');
+        if (srModal && srModal.classList.contains('open')) {
+          location.reload();
           return;
         }
         ['payModal', 'heldModal', 'numpadModal', 'shiftModal', 'closeShiftModal', 'holdNoteModal'].forEach(closeModal);

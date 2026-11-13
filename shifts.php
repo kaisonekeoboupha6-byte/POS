@@ -176,6 +176,11 @@ document.getElementById('snBtn').addEventListener('click', closeShiftNotice);
 document.getElementById('shiftNoticeModal').addEventListener('click', function (e) {
   if (e.target === this) closeShiftNotice();
 });
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape' && document.getElementById('shiftNoticeModal').classList.contains('show')) {
+    closeShiftNotice();
+  }
+});
 
 async function api(action, data) {
   const res = await fetch('api.php?action=' + action, {
