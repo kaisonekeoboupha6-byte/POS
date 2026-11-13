@@ -36,26 +36,35 @@ include __DIR__ . '/header.php';
 
 <div id="labels" style="display:flex;flex-wrap:wrap;gap:10px;background:var(--card);padding:18px;border:1px solid var(--border);border-radius:var(--radius)"></div>
 
-<script src="assets/vendor/JsBarcode.all.min.js"></script>
+<script src="assets/vendor/JsBarcode.all.min.js?v=<?= asset_v('assets/vendor/JsBarcode.all.min.js') ?>" defer></script>
 <script>
 function esc(s) { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
 function genLabels() {
+  if (typeof JsBarcode === 'undefined') return;
   const opt = document.getElementById('productSel').selectedOptions[0];
   if (!opt) return;
   const count = Math.min(100, Math.max(1, parseInt(document.getElementById('labelCount').value) || 1));
   const box = document.getElementById('labels');
-  box.innerHTML = '';
+
+  // Render SVG once and clone via DocumentFragment to avoid 100x SVG generation & reflows
+  const tpl = document.createElement('div');
+  tpl.style.cssText = 'border:1px dashed #cbd5e1;border-radius:6px;padding:8px 6px;text-align:center;width:195px;background:#fff;color:#0f172a';
+  tpl.innerHTML = `<div style="font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(opt.dataset.name)}</div>
+    <svg class="bc"></svg>
+    <div class="tabular" style="font-size:13.5px;font-weight:800">${Number(opt.dataset.price).toLocaleString()} ₭</div>`;
+  JsBarcode(tpl.querySelector('.bc'), opt.dataset.barcode,
+    { format: 'CODE128', width: 1.6, height: 42, fontSize: 12, margin: 2 });
+
+  const frag = document.createDocumentFragment();
   for (let i = 0; i < count; i++) {
-    const div = document.createElement('div');
-    div.style.cssText = 'border:1px dashed #cbd5e1;border-radius:6px;padding:8px 6px;text-align:center;width:195px;background:#fff;color:#0f172a';
-    div.innerHTML = `<div style="font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(opt.dataset.name)}</div>
-      <svg class="bc"></svg>
-      <div class="tabular" style="font-size:13.5px;font-weight:800">${Number(opt.dataset.price).toLocaleString()} ₭</div>`;
-    box.appendChild(div);
-    JsBarcode(div.querySelector('.bc'), opt.dataset.barcode,
-      { format: 'CODE128', width: 1.6, height: 42, fontSize: 12, margin: 2 });
+    frag.appendChild(tpl.cloneNode(true));
   }
+  box.replaceChildren(frag);
 }
-genLabels();
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', genLabels);
+} else {
+  genLabels();
+}
 </script>
 <?php include __DIR__ . '/footer.php'; ?>

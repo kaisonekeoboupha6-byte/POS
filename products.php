@@ -115,7 +115,7 @@ include __DIR__ . '/header.php';
     <tr>
       <td>
         <?php if ($p['image']): ?>
-          <img class="thumb" src="uploads/<?= h($p['image']) ?>" alt="<?= h($p['name']) ?>">
+          <img class="thumb" src="uploads/<?= h($p['image']) ?>" alt="<?= h($p['name']) ?>" width="44" height="44" loading="lazy" decoding="async">
         <?php else: ?>
           <span class="thumb-placeholder"><i data-lucide="package"></i></span>
         <?php endif; ?>

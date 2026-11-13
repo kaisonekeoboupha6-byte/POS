@@ -10,11 +10,14 @@ $shift = get_open_shift($u['id']);
 $is_manager = in_array($u['role'], ['admin', 'manager']);
 
 $products = $pdo->query(
-    "SELECT p.*, c.name AS category_name FROM products p
+    "SELECT p.id, p.barcode, p.name, p.category_id, p.sell_price, p.stock_qty, p.min_stock, p.image,
+            c.name AS category_name
+     FROM products p
      LEFT JOIN categories c ON c.id = p.category_id
      WHERE p.status = 1 ORDER BY p.name"
 )->fetchAll();
-$categories = $pdo->query('SELECT * FROM categories ORDER BY name')->fetchAll();
+$categories = $pdo->query('SELECT id, name FROM categories ORDER BY name')->fetchAll();
+$held_count = (int)$pdo->query("SELECT COUNT(*) FROM sales WHERE status = 'held'")->fetchColumn();
 
 $cat_counts = [];
 foreach ($products as $p) {
@@ -56,8 +59,8 @@ $store_name  = get_setting('store_name', 'POS Terminal');
     } catch (e) {}
   })();
 </script>
-<link rel="stylesheet" href="style.css">
-<script src="assets/vendor/lucide.min.js"></script>
+<link rel="stylesheet" href="style.css?v=<?= asset_v('style.css') ?>">
+<script src="assets/vendor/lucide.min.js?v=<?= asset_v('assets/vendor/lucide.min.js') ?>" defer></script>
 <style>
   body.pos-body {
     height: 100dvh;
@@ -190,6 +193,7 @@ $store_name  = get_setting('store_name', 'POS Terminal');
     position: relative;
     user-select: none;
     touch-action: manipulation;
+    contain: layout style;
   }
   .prod-card:hover { border-color: var(--primary); transform: translateY(-2px); box-shadow: var(--shadow-md); }
   .prod-card:active { transform: scale(0.98); }
@@ -471,7 +475,7 @@ $store_name  = get_setting('store_name', 'POS Terminal');
       <button type="button" class="btn btn-secondary btn-sm" onclick="openHeldList()" style="height: 36px; padding: 0 12px; border-radius: var(--radius-full);">
         <i data-lucide="pause-circle" aria-hidden="true" style="width: 15px; height: 15px; color: var(--warning);"></i>
         <span class="hide-tablet">ບິນພັກ (F2)</span>
-        <span class="badge tabular" style="background: var(--warning); color: #fff; border-color: var(--warning); padding: 1px 7px; font-size: 11px;" id="heldCountBadge">0</span>
+        <span class="badge tabular" style="background: var(--warning); color: #fff; border-color: var(--warning); padding: 1px 7px; font-size: 11px;" id="heldCountBadge"><?= $held_count ?></span>
       </button>
     </div>
 
@@ -908,6 +912,28 @@ $store_name  = get_setting('store_name', 'POS Terminal');
     let showProductImages = true;
     let toastTimer = null;
     let confirmResolver = null;
+    const PRODUCT_BY_ID = new Map();
+    const PRODUCT_BY_BARCODE = new Map();
+
+    function rebuildProductIndex() {
+      PRODUCT_BY_ID.clear();
+      PRODUCT_BY_BARCODE.clear();
+      for (let i = 0; i < PRODUCTS.length; i++) {
+        const p = PRODUCTS[i];
+        p._q = ((p.name || '') + ' ' + (p.barcode || '')).toLowerCase();
+        PRODUCT_BY_ID.set(Number(p.id), p);
+        if (p.barcode) PRODUCT_BY_BARCODE.set(String(p.barcode), p);
+      }
+    }
+    rebuildProductIndex();
+
+    function getCartQtyMap() {
+      const m = new Map();
+      for (let i = 0; i < cart.length; i++) {
+        m.set(Number(cart[i].id), (m.get(Number(cart[i].id)) || 0) + cart[i].qty);
+      }
+      return m;
+    }
 
     function updateClock() {
       const el = document.getElementById('posClock');
@@ -922,7 +948,7 @@ $store_name  = get_setting('store_name', 'POS Terminal');
       const icon = document.getElementById('posThemeIcon');
       if (!icon) return;
       icon.setAttribute('data-lucide', theme === 'dark' ? 'sun' : 'moon');
-      if (window.lucide) lucide.createIcons();
+      if (window.lucide) lucide.createIcons({ root: icon.parentElement });
     }
 
     function togglePosTheme() {
@@ -982,9 +1008,10 @@ $store_name  = get_setting('store_name', 'POS Terminal');
     }
     function toggleAudio() {
       audioEnabled = !audioEnabled;
-      document.getElementById('btnAudioToggle').classList.toggle('active', audioEnabled);
+      const btn = document.getElementById('btnAudioToggle');
+      btn.classList.toggle('active', audioEnabled);
       document.getElementById('audioIcon').setAttribute('data-lucide', audioEnabled ? 'volume-2' : 'volume-x');
-      if (window.lucide) lucide.createIcons();
+      if (window.lucide) lucide.createIcons({ root: btn });
     }
     function playBeep() {
       if (!audioEnabled) return;
@@ -1036,33 +1063,62 @@ $store_name  = get_setting('store_name', 'POS Terminal');
       renderProducts();
     }
 
+    function syncProductCardBadges() {
+      const grid = document.getElementById('productGrid');
+      if (!grid) return;
+      const qtyMap = getCartQtyMap();
+      const cards = grid.querySelectorAll('.prod-card[data-pid]');
+      for (let i = 0; i < cards.length; i++) {
+        const card = cards[i];
+        const qty = qtyMap.get(Number(card.dataset.pid)) || 0;
+        card.classList.toggle('in-cart', qty > 0);
+        let badge = card.querySelector('.prod-cart-qty');
+        if (qty > 0) {
+          if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'prod-cart-qty tabular';
+            card.insertBefore(badge, card.firstChild);
+          }
+          if (badge.textContent !== String(qty)) badge.textContent = qty;
+        } else if (badge) {
+          badge.remove();
+        }
+      }
+    }
+
     function renderProducts() {
       const q = document.getElementById('searchInput').value.toLowerCase().trim();
       const list = PRODUCTS.filter(p => {
         const matchCat = !currentCategory || p.category_id == currentCategory;
-        const matchQ = !q || p.name.toLowerCase().includes(q) || (p.barcode && p.barcode.toLowerCase().includes(q));
+        const matchQ = !q || p._q.includes(q);
         return matchCat && matchQ;
       });
 
       const grid = document.getElementById('productGrid');
       if (!list.length) {
         grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 48px 20px;"><i data-lucide="package-search" aria-hidden="true" style="width: 38px; height: 38px; margin-bottom: 8px; opacity: 0.5;"></i><p style="font-weight:600;">ບໍ່ພົບສິນຄ້າທີ່ຄົ້ນຫາ</p></div>';
-        if (window.lucide) lucide.createIcons();
+        if (window.lucide) lucide.createIcons({ root: grid });
         return;
       }
 
+      const qtyMap = getCartQtyMap();
+      let hasNewIcons = false;
       grid.innerHTML = list.map(p => {
         const out = Number(p.stock_qty) <= 0;
         const low = Number(p.stock_qty) > 0 && Number(p.stock_qty) <= Number(p.min_stock);
-        const cartItem = cart.find(i => i.id == p.id);
-        const imgBlock = showProductImages
-          ? (p.image
-              ? `<div class="prod-img-wrap"><img src="uploads/${esc(p.image)}" alt="${esc(p.name)}" loading="lazy"></div>`
-              : `<div class="prod-img-wrap"><i data-lucide="package" aria-hidden="true" style="width:28px;height:28px;opacity:0.45;"></i></div>`)
-          : '';
+        const cartQty = qtyMap.get(Number(p.id)) || 0;
+        let imgBlock = '';
+        if (showProductImages) {
+          if (p.image) {
+            imgBlock = `<div class="prod-img-wrap"><img src="uploads/${esc(p.image)}" alt="${esc(p.name)}" loading="lazy" decoding="async"></div>`;
+          } else {
+            hasNewIcons = true;
+            imgBlock = `<div class="prod-img-wrap"><i data-lucide="package" aria-hidden="true" style="width:28px;height:28px;opacity:0.45;"></i></div>`;
+          }
+        }
         return `
-          <div class="prod-card ${out ? 'out' : ''} ${cartItem ? 'in-cart' : ''}" onclick="addToCartById(${p.id})" role="button" tabindex="0">
-            ${cartItem ? `<span class="prod-cart-qty tabular">${cartItem.qty}</span>` : ''}
+          <div class="prod-card ${out ? 'out' : ''} ${cartQty > 0 ? 'in-cart' : ''}" data-pid="${p.id}" onclick="addToCartById(${p.id})" role="button" tabindex="0">
+            ${cartQty > 0 ? `<span class="prod-cart-qty tabular">${cartQty}</span>` : ''}
             <div>
               ${imgBlock}
               <div style="display: flex; justify-content: space-between; align-items: center; gap: 4px;">
@@ -1080,11 +1136,11 @@ $store_name  = get_setting('store_name', 'POS Terminal');
           </div>
         `;
       }).join('');
-      if (window.lucide) lucide.createIcons();
+      if (hasNewIcons && window.lucide) lucide.createIcons({ root: grid });
     }
 
     function addToCartById(id) {
-      const p = PRODUCTS.find(x => x.id == id);
+      const p = PRODUCT_BY_ID.get(Number(id));
       if (p) addToCart(p, 1);
     }
 
@@ -1208,7 +1264,8 @@ $store_name  = get_setting('store_name', 'POS Terminal');
         document.getElementById('sumTotal').textContent = '0 ₭';
         document.getElementById('payBtnAmount').textContent = '0 ₭';
         document.getElementById('btnPay').disabled = true;
-        renderProducts();
+        if (window.lucide) lucide.createIcons({ root: wrap });
+        syncProductCardBadges();
         return;
       }
 
@@ -1244,7 +1301,8 @@ $store_name  = get_setting('store_name', 'POS Terminal');
       document.getElementById('sumTotal').textContent = fmt(t.total) + ' ₭';
       document.getElementById('payBtnAmount').textContent = fmt(t.total) + ' ₭';
       document.getElementById('btnPay').disabled = !HAS_SHIFT;
-      renderProducts();
+      if (window.lucide) lucide.createIcons({ root: wrap });
+      syncProductCardBadges();
     }
 
     document.getElementById('barcodeInput').addEventListener('keydown', function(e) {
@@ -1252,7 +1310,7 @@ $store_name  = get_setting('store_name', 'POS Terminal');
         e.preventDefault();
         const code = this.value.trim();
         if (!code) return;
-        const p = PRODUCTS.find(x => x.barcode === code || String(x.id) === code);
+        const p = PRODUCT_BY_BARCODE.get(code) || PRODUCT_BY_ID.get(Number(code));
         if (p) {
           addToCart(p, 1);
           this.value = '';
@@ -1263,7 +1321,11 @@ $store_name  = get_setting('store_name', 'POS Terminal');
       }
     });
 
-    document.getElementById('searchInput').addEventListener('input', renderProducts);
+    let productSearchTimer = null;
+    document.getElementById('searchInput').addEventListener('input', function () {
+      clearTimeout(productSearchTimer);
+      productSearchTimer = setTimeout(renderProducts, 90);
+    });
 
     let searchTimer = null;
     document.getElementById('customerSearch').addEventListener('input', function() {
@@ -1516,7 +1578,7 @@ $store_name  = get_setting('store_name', 'POS Terminal');
             </div>
           </div>
         `).join('');
-        if (window.lucide) lucide.createIcons();
+        if (window.lucide) lucide.createIcons({ root: box });
       } else {
         box.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 28px 0;">ບໍ່ມີບິນທີ່ພັກໄວ້</p>';
       }
@@ -1539,7 +1601,7 @@ $store_name  = get_setting('store_name', 'POS Terminal');
       const res = await api('resume_held', { id });
       if (!res.ok) { showToast(res.error, 'danger'); return; }
       cart = res.items.map(i => {
-        const p = PRODUCTS.find(x => x.id == i.product_id) || {};
+        const p = PRODUCT_BY_ID.get(Number(i.product_id)) || {};
         return {
           id: i.product_id,
           name: i.product_name,
@@ -1626,6 +1688,7 @@ $store_name  = get_setting('store_name', 'POS Terminal');
       const data = await res.json();
       if (data.products) {
         PRODUCTS = data.products;
+        rebuildProductIndex();
         renderProducts();
       }
     }
@@ -1662,11 +1725,17 @@ $store_name  = get_setting('store_name', 'POS Terminal');
       }
     });
 
-    syncPosThemeIcon(document.documentElement.getAttribute('data-theme') || 'light');
-    renderProducts();
-    renderCart();
-    updateHeldCounter();
-    if (window.lucide) lucide.createIcons();
+    function bootPosTerminal() {
+      syncPosThemeIcon(document.documentElement.getAttribute('data-theme') || 'light');
+      renderProducts();
+      renderCart();
+      if (window.lucide) lucide.createIcons();
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', bootPosTerminal);
+    } else {
+      bootPosTerminal();
+    }
   </script>
 </body>
 </html>

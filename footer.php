@@ -49,11 +49,17 @@
       if (backdrop) backdrop.classList.remove('show');
     };
 
+    window.hydrateIcons = function (root) {
+      if (window.lucide) {
+        lucide.createIcons(root ? { root: root } : undefined);
+      }
+    };
+
     function syncThemeIcon(theme) {
       var icon = document.getElementById('themeIcon');
       if (!icon) return;
       icon.setAttribute('data-lucide', theme === 'dark' ? 'sun' : 'moon');
-      if (window.lucide) lucide.createIcons();
+      window.hydrateIcons(icon.parentElement || document.body);
     }
 
     window.toggleTheme = function () {
@@ -103,9 +109,14 @@
       }
     });
 
-    syncThemeIcon(document.documentElement.getAttribute('data-theme') || 'light');
-    if (window.lucide) {
-      lucide.createIcons();
+    function initShellIcons() {
+      syncThemeIcon(document.documentElement.getAttribute('data-theme') || 'light');
+      window.hydrateIcons();
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initShellIcons);
+    } else {
+      initShellIcons();
     }
   })();
 </script>

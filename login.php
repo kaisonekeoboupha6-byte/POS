@@ -47,8 +47,8 @@ $store_name = get_setting('store_name', 'POS Retail Terminal');
     } catch (e) {}
   })();
 </script>
-<link rel="stylesheet" href="style.css">
-<script src="assets/vendor/lucide.min.js"></script>
+<link rel="stylesheet" href="style.css?v=<?= asset_v('style.css') ?>">
+<script src="assets/vendor/lucide.min.js?v=<?= asset_v('assets/vendor/lucide.min.js') ?>" defer></script>
 </head>
 <body class="login-page">
 <div class="login-shell">
@@ -160,8 +160,10 @@ $store_name = get_setting('store_name', 'POS Retail Terminal');
 <script>
   function syncLoginThemeIcon(theme) {
     var icon = document.getElementById('loginThemeIcon');
-    if (icon) icon.setAttribute('data-lucide', theme === 'dark' ? 'sun' : 'moon');
-    if (window.lucide) lucide.createIcons();
+    if (icon) {
+      icon.setAttribute('data-lucide', theme === 'dark' ? 'sun' : 'moon');
+      if (window.lucide) lucide.createIcons({ root: icon.parentElement });
+    }
   }
 
   function toggleLoginTheme() {
@@ -181,7 +183,7 @@ $store_name = get_setting('store_name', 'POS Retail Terminal');
     input.type = show ? 'text' : 'password';
     btn.setAttribute('aria-pressed', show ? 'true' : 'false');
     icon.setAttribute('data-lucide', show ? 'eye-off' : 'eye');
-    if (window.lucide) lucide.createIcons();
+    if (window.lucide) lucide.createIcons({ root: btn });
   }
 
   function fillDemoLogin() {
@@ -190,7 +192,15 @@ $store_name = get_setting('store_name', 'POS Retail Terminal');
     document.getElementById('passwordInput').focus();
   }
 
-  syncLoginThemeIcon(document.documentElement.getAttribute('data-theme') || 'light');
+  function initLoginIcons() {
+    syncLoginThemeIcon(document.documentElement.getAttribute('data-theme') || 'light');
+    if (window.lucide) lucide.createIcons();
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initLoginIcons);
+  } else {
+    initLoginIcons();
+  }
 </script>
 </body>
 </html>

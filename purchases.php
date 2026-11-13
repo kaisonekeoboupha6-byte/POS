@@ -118,7 +118,7 @@ function addLine() {
     <td><input type="number" name="qty[]" min="1" value="1" class="tabular"></td>
     <td><input type="number" name="cost[]" min="0" step="any" value="0" class="tabular"></td>
     <td style="text-align:right"><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()" title="ລຶບແຖວ"><i data-lucide="trash-2"></i></button></td>`;
-  if (window.lucide) lucide.createIcons();
+  if (window.lucide) lucide.createIcons({ root: tr });
 }
 function fillCost(sel) {
   const opt = sel.selectedOptions[0];
