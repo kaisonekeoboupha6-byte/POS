@@ -1,13 +1,7 @@
 <?php
 /**
  * pos.php - ໜ້າຂາຍສິນຄ້າ (Front-End / Cashier Terminal)
- * Modern Clean Retail UI/UX Standard (Anti-AI)
- * - ສະແກນບາໂຄດ (Beep Web Audio API) / ຄົ້ນຫາສິນຄ້າ
- * - Touch Targets & On-screen Numpad
- * - ສ່ວນຫຼຸດ % ຫຼື ຈຳນວນເງິນ
- * - ຈ່າຍເງິນສົດ (Quick Cash) / ບັດ / QR Code
- * - ພັກບິນ (Hold Bills Drawer), ດຶງບິນພັກ, ພິມໃບບິນ Thermal 80mm
- * - ສະມາຊິກ + ໃຊ້ຄະແນນແລກສ່ວນຫຼຸດ
+ * Commercial Retail UI/UX (Light + Dark Mode, Offline Vendor Safe)
  */
 require_once __DIR__ . '/config.php';
 require_login();
@@ -21,6 +15,14 @@ $products = $pdo->query(
      WHERE p.status = 1 ORDER BY p.name"
 )->fetchAll();
 $categories = $pdo->query('SELECT * FROM categories ORDER BY name')->fetchAll();
+
+$cat_counts = [];
+foreach ($products as $p) {
+    $cid = (string)($p['category_id'] ?? '');
+    if ($cid !== '') {
+        $cat_counts[$cid] = ($cat_counts[$cid] ?? 0) + 1;
+    }
+}
 
 $shift_cash_expected = 0;
 if ($shift) {
@@ -36,143 +38,466 @@ $tax_rate    = (float)get_setting('tax_rate', 0);
 $point_value = (int)get_setting('point_value', 100);
 $point_rate  = (int)get_setting('point_rate', 10000);
 $payment_qr  = get_setting('payment_qr');
+$store_name  = get_setting('store_name', 'POS Terminal');
 ?>
 <!DOCTYPE html>
-<html lang="lo">
+<html lang="lo" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ໜ້າຂາຍ POS - <?= h(get_setting('store_name', 'POS')) ?></title>
+<title>ໜ້າຂາຍ POS - <?= h($store_name) ?></title>
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem('pos_theme');
+      if (t === 'dark' || t === 'light') {
+        document.documentElement.setAttribute('data-theme', t);
+      }
+    } catch (e) {}
+  })();
+</script>
 <link rel="stylesheet" href="style.css">
-<script src="https://unpkg.com/lucide@latest"></script>
+<script src="assets/vendor/lucide.min.js"></script>
 <style>
-  body { height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
-  .pos-container { flex: 1; display: grid; grid-template-columns: 1fr 460px; overflow: hidden; }
-  .pos-catalog { display: flex; flex-direction: column; height: 100%; border-right: 1.5px solid var(--border); overflow: hidden; }
-  .pos-ticket { display: flex; flex-direction: column; height: 100%; background: var(--card); overflow: hidden; }
+  body.pos-body {
+    height: 100dvh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+  }
 
-  .cat-bar { display: flex; gap: 8px; padding: 10px 18px; background: var(--card); border-bottom: 1.5px solid var(--border); overflow-x: auto; scrollbar-width: none; }
+  .pos-topbar {
+    height: 62px;
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 18px;
+    gap: 12px;
+    flex-shrink: 0;
+    z-index: 20;
+  }
+  .pos-top-group { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .pos-clock {
+    padding: 5px 10px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .pos-container {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 440px;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  .pos-catalog {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    border-right: 1px solid var(--border);
+    overflow: hidden;
+    min-width: 0;
+  }
+
+  .pos-search-bar {
+    padding: 12px 18px;
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .kbd-hint {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 2px 7px;
+    border-radius: 5px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 700;
+    background: var(--bg-subtle);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    pointer-events: none;
+  }
+
+  .cat-bar {
+    display: flex;
+    gap: 8px;
+    padding: 10px 18px;
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    scrollbar-width: none;
+    flex-shrink: 0;
+  }
   .cat-bar::-webkit-scrollbar { display: none; }
   .cat-chip {
-    height: 38px; padding: 0 16px; border-radius: var(--radius-full); font-size: 13px; font-weight: 600;
-    white-space: nowrap; border: 1.5px solid var(--border); background: var(--card); color: var(--text-muted);
-    cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.15s;
+    height: 38px;
+    padding: 0 14px;
+    border-radius: var(--radius-full);
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--text-muted);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all var(--dur-fast) ease;
+    font-family: inherit;
+    touch-action: manipulation;
   }
-  .cat-chip:hover { background: var(--bg-subtle); color: var(--text); }
-  .cat-chip.active { background: var(--text); color: #fff; border-color: var(--text); }
+  .cat-chip:hover { background: var(--bg-subtle); color: var(--text); border-color: var(--border-strong); }
+  .cat-chip.active { background: var(--primary); color: #fff; border-color: var(--primary); box-shadow: 0 2px 8px rgba(37, 99, 235, 0.24); }
+  .cat-count {
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: var(--radius-full);
+    background: var(--bg-subtle);
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .cat-chip.active .cat-count { background: rgba(255, 255, 255, 0.22); color: #fff; }
 
-  .prod-scroll { flex: 1; overflow-y: auto; padding: 18px; }
-  .prod-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; }
+  .prod-scroll { flex: 1; overflow-y: auto; padding: 16px 18px; }
+  .prod-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(178px, 1fr)); gap: 14px; }
   .prod-card {
-    background: var(--card); border: 1.5px solid var(--border); border-radius: var(--radius);
-    padding: 13px; display: flex; flex-direction: column; justify-content: space-between;
-    cursor: pointer; transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s; min-height: 128px;
-    box-shadow: var(--shadow-sm); position: relative;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    cursor: pointer;
+    transition: transform var(--dur-fast) var(--ease-out), border-color var(--dur-fast), box-shadow var(--dur-fast);
+    min-height: 124px;
+    box-shadow: var(--shadow-xs);
+    position: relative;
+    user-select: none;
+    touch-action: manipulation;
   }
   .prod-card:hover { border-color: var(--primary); transform: translateY(-2px); box-shadow: var(--shadow-md); }
   .prod-card:active { transform: scale(0.98); }
-  .prod-card.out { opacity: 0.45; cursor: not-allowed; }
+  .prod-card.in-cart { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-ring); }
+  .prod-card.out { opacity: 0.5; cursor: not-allowed; }
+  .prod-card.out:hover { transform: none; border-color: var(--border); box-shadow: var(--shadow-xs); }
+
+  .prod-cart-qty {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    min-width: 24px;
+    height: 24px;
+    padding: 0 7px;
+    border-radius: var(--radius-full);
+    background: var(--primary);
+    color: #fff;
+    font-size: 11.5px;
+    font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: var(--shadow-sm);
+    z-index: 2;
+  }
+
   .prod-img-wrap {
-    width: 100%; height: 88px; border-radius: var(--radius-sm); overflow: hidden;
-    background: var(--bg-subtle); margin-bottom: 10px; border: 1px solid var(--border);
-    display: flex; align-items: center; justify-content: center; color: var(--text-subtle);
+    width: 100%;
+    height: 92px;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: var(--bg-subtle);
+    margin-bottom: 10px;
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-subtle);
   }
   .prod-img-wrap img { width: 100%; height: 100%; object-fit: cover; }
 
-  .cart-list { flex: 1; overflow-y: auto; padding: 12px 18px; }
-  .cart-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 4px; border-bottom: 1px solid var(--border); gap: 10px; border-radius: var(--radius-sm); }
+  .pos-ticket {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: var(--card);
+    overflow: hidden;
+    min-width: 0;
+  }
+
+  .ticket-head {
+    padding: 10px 16px;
+    background: var(--bg-subtle);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .customer-dropdown {
+    position: absolute;
+    top: 4px;
+    left: 16px;
+    right: 16px;
+    background: var(--card-elevated);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    max-height: 230px;
+    overflow-y: auto;
+    box-shadow: var(--shadow-lg);
+    z-index: 35;
+  }
+  .customer-option {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background var(--dur-fast);
+  }
+  .customer-option:last-child { border-bottom: none; }
+  .customer-option:hover { background: var(--surface-hover); }
+
+  .cart-list { flex: 1; overflow-y: auto; padding: 10px 16px; }
+  .cart-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 8px;
+    border-bottom: 1px solid var(--border);
+    gap: 10px;
+    border-radius: var(--radius-sm);
+  }
   .cart-row.flash { animation: flashCart 0.55s ease; }
   @keyframes flashCart { 0% { background: var(--primary-50); } 100% { background: transparent; } }
 
+  .stepper-group {
+    display: flex;
+    align-items: center;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: var(--bg);
+    flex-shrink: 0;
+  }
+  .stepper-btn {
+    width: 34px;
+    height: 36px;
+    border: none;
+    background: var(--bg-subtle);
+    color: var(--text);
+    font-weight: 800;
+    font-size: 16px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background var(--dur-fast);
+    touch-action: manipulation;
+  }
+  .stepper-btn:hover { background: var(--border); }
+  .stepper-val {
+    width: 36px;
+    text-align: center;
+    font-size: 13.5px;
+    font-weight: 800;
+    cursor: pointer;
+    color: var(--text);
+    padding: 6px 0;
+  }
+
+  .ticket-footer {
+    padding: 14px 18px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--card);
+  }
+
+  .ticket-total-box {
+    margin-top: 10px;
+    padding: 12px 14px;
+    border-radius: var(--radius);
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+
   .numpad-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; }
   .numpad-btn {
-    height: 50px; background: var(--bg-subtle); border: 1.5px solid var(--border); border-radius: var(--radius-sm);
-    font-size: 18px; font-weight: 700; color: var(--text); cursor: pointer; display: flex; align-items: center; justify-content: center;
+    height: 52px;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background var(--dur-fast), transform var(--dur-fast);
+    touch-action: manipulation;
   }
-  .numpad-btn:hover { background: #e2e8f0; }
+  .numpad-btn:hover { background: var(--border); }
+  .numpad-btn:active { transform: scale(0.97); }
 
   .quick-cash-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0; }
   .quick-cash-btn {
-    height: 44px; background: var(--bg-subtle); border: 1.5px solid var(--border); border-radius: var(--radius-sm);
-    font-size: 12.5px; font-weight: 700; color: var(--text); cursor: pointer; font-variant-numeric: tabular-nums;
+    height: 44px;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text);
+    cursor: pointer;
+    font-variant-numeric: tabular-nums;
+    transition: background var(--dur-fast), border-color var(--dur-fast);
+    touch-action: manipulation;
   }
-  .quick-cash-btn:hover { background: #e2e8f0; border-color: var(--border-strong); }
+  .quick-cash-btn:hover { background: var(--border); border-color: var(--border-strong); }
 
   .change-display {
-    padding: 14px 18px; border-radius: var(--radius); background: var(--success-50);
-    border: 1.5px solid #a7f3d0; display: flex; align-items: center; justify-content: space-between;
-    margin-top: 10px; color: var(--success-dark);
+    padding: 14px 18px;
+    border-radius: var(--radius);
+    background: var(--success-50);
+    border: 1px solid var(--success-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 10px;
+    color: var(--success-dark);
   }
-  .change-display.insufficient { background: var(--danger-50); border-color: #fecdd3; color: var(--danger-dark); }
+  .change-display.insufficient {
+    background: var(--danger-50);
+    border-color: var(--danger-border);
+    color: var(--danger-dark);
+  }
 
   /* Toast Notification */
   .pos-toast {
-    position: fixed; bottom: 24px; left: 24px; z-index: 200;
-    background: var(--text); color: #fff; padding: 12px 18px; border-radius: var(--radius);
-    box-shadow: var(--shadow-lg); font-size: 13.5px; font-weight: 600;
-    display: flex; align-items: center; gap: 10px;
-    transform: translateY(20px); opacity: 0; pointer-events: none; transition: all 0.2s ease;
+    position: fixed;
+    bottom: 24px;
+    left: 24px;
+    z-index: 200;
+    background: var(--text);
+    color: var(--card);
+    padding: 12px 18px;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    font-size: 13.5px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transform: translateY(20px);
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 0.2s var(--ease-out), opacity 0.2s ease;
   }
   .pos-toast.show { transform: translateY(0); opacity: 1; }
-  .pos-toast.toast-danger { background: var(--danger); }
-  .pos-toast.toast-success { background: var(--success); }
+  .pos-toast.toast-danger { background: var(--danger); color: #fff; }
+  .pos-toast.toast-success { background: var(--success); color: #fff; }
+
+  .pos-mobile-tabs {
+    display: none;
+    background: var(--card);
+    border-top: 1px solid var(--border);
+    padding: 8px 12px;
+    gap: 8px;
+    flex-shrink: 0;
+    z-index: 20;
+  }
+
+  @media (max-width: 1200px) {
+    .pos-container { grid-template-columns: 1fr 380px; }
+  }
+
+  @media (max-width: 960px) {
+    .pos-topbar { padding: 0 12px; height: auto; min-height: 58px; flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px; }
+    .pos-clock, .hide-tablet { display: none !important; }
+    .pos-container { grid-template-columns: 1fr; }
+    .pos-catalog, .pos-ticket { border-right: none; }
+    body.pos-mobile-view-catalog .pos-ticket { display: none; }
+    body.pos-mobile-view-cart .pos-catalog { display: none; }
+    .pos-mobile-tabs { display: grid; grid-template-columns: 1fr 1fr; }
+    .pos-search-bar { flex-direction: column; align-items: stretch; }
+    .pos-search-bar > div { width: 100% !important; }
+  }
 </style>
 </head>
-<body>
+<body class="pos-body pos-mobile-view-catalog">
 
   <!-- ================= TOPBAR ================= -->
-  <header style="height: 60px; background: var(--card); border-bottom: 1.5px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 18px; flex-shrink: 0; z-index: 20;">
-    <div style="display: flex; align-items: center; gap: 12px;">
-      <div style="width: 38px; height: 38px; background: var(--text); color: #fff; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 17px;">P</div>
+  <header class="pos-topbar">
+    <div class="pos-top-group">
+      <div class="brand-mark" style="width:36px;height:36px;font-size:16px;" aria-hidden="true">P</div>
       <div>
-        <h1 style="font-size: 15px; font-weight: 800; line-height: 1.2;"><?= h(get_setting('store_name', 'POS Terminal')) ?></h1>
+        <h1 style="font-size: 15px; font-weight: 800; line-height: 1.2; color: var(--text);"><?= h($store_name) ?></h1>
         <p style="font-size: 11.5px; color: var(--text-muted);">ຈຸດຂາຍໜ້າຮ້ານ (Cashier Terminal)</p>
       </div>
+      <span class="pos-clock tabular" id="posClock">--:--</span>
     </div>
 
-    <div style="display: flex; align-items: center; gap: 10px;">
+    <div class="pos-top-group">
       <?php if (!$shift): ?>
-      <div style="display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; background: var(--warning-50); color: var(--warning-dark); border: 1.5px solid #fde68a; border-radius: var(--radius-full); font-size: 12px; font-weight: 700;">
-        <i data-lucide="alert-circle" style="width: 15px; height: 15px;"></i>
+      <div class="topbar-pill pill-warning">
+        <i data-lucide="alert-circle" aria-hidden="true" style="width: 15px; height: 15px;"></i>
         <span>ຍັງບໍ່ໄດ້ເປີດກະ</span>
-        <button class="btn btn-warning btn-sm" onclick="openModal('shiftModal')">ເປີດກະດຽວນີ້</button>
+        <button type="button" class="btn btn-warning btn-sm" style="height:26px;padding:0 10px;font-size:11.5px;" onclick="openModal('shiftModal')">ເປີດກະ</button>
       </div>
       <?php else: ?>
-      <div style="display: inline-flex; align-items: center; gap: 8px; padding: 5px 14px; background: var(--success-50); color: var(--success-dark); border: 1.5px solid #a7f3d0; border-radius: var(--radius-full); font-size: 12px; font-weight: 700;">
-        <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--success);"></span>
-        <span>ກະ #<?= $shift['id'] ?> (<?= date('H:i', strtotime($shift['opened_at'])) ?>)</span>
-        <button class="btn btn-secondary btn-sm" style="height: 26px; padding: 0 8px; font-size: 11px;" onclick="openCloseShift()">ປິດກະ</button>
+      <div class="topbar-pill pill-success">
+        <span class="pulse-dot" aria-hidden="true"></span>
+        <span>ກະ #<?= (int)$shift['id'] ?> (<?= date('H:i', strtotime($shift['opened_at'])) ?>)</span>
+        <button type="button" class="btn btn-secondary btn-sm" style="height: 26px; padding: 0 9px; font-size: 11px;" onclick="openCloseShift()">ປິດກະ</button>
       </div>
       <?php endif; ?>
 
-      <!-- Held orders badge button -->
-      <button class="btn btn-secondary btn-sm" onclick="openHeldList()" style="height: 36px; padding: 0 12px; border-radius: var(--radius-full);">
-        <i data-lucide="pause-circle" style="width: 15px; height: 15px; color: var(--warning);"></i>
-        <span>ບິນພັກ (F2)</span>
-        <span class="badge tabular" style="background: var(--warning); color: #fff; border-color: var(--warning); padding: 1px 6px; font-size: 11px;" id="heldCountBadge">0</span>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="openHeldList()" style="height: 36px; padding: 0 12px; border-radius: var(--radius-full);">
+        <i data-lucide="pause-circle" aria-hidden="true" style="width: 15px; height: 15px; color: var(--warning);"></i>
+        <span class="hide-tablet">ບິນພັກ (F2)</span>
+        <span class="badge tabular" style="background: var(--warning); color: #fff; border-color: var(--warning); padding: 1px 7px; font-size: 11px;" id="heldCountBadge">0</span>
       </button>
     </div>
 
-    <div style="display: flex; align-items: center; gap: 8px;">
-      <button class="btn btn-secondary btn-sm" id="btnViewToggle" title="ສະຫຼັບມຸມມອງຮູບສິນຄ້າ" onclick="toggleCardImages()" style="height: 36px; padding: 0 10px;">
-        <i data-lucide="image" style="width: 15px; height: 15px;"></i>
-        <span id="viewToggleLabel">ສະແດງຮູບ</span>
+    <div class="pos-top-group">
+      <button type="button" class="btn btn-secondary btn-sm" id="btnViewToggle" title="ສະຫຼັບມຸມມອງຮູບສິນຄ້າ" onclick="toggleCardImages()" style="height: 36px; padding: 0 10px;">
+        <i data-lucide="image" aria-hidden="true" style="width: 15px; height: 15px;"></i>
+        <span id="viewToggleLabel" class="hide-tablet">ສະແດງຮູບ</span>
       </button>
-      <button class="btn btn-secondary btn-sm active" id="btnAudioToggle" title="ເປີດ/ປິດສຽງບາໂຄດ" onclick="toggleAudio()" style="width: 36px; height: 36px; padding: 0;">
-        <i data-lucide="volume-2" id="audioIcon" style="width: 16px; height: 16px;"></i>
+      <button type="button" class="btn btn-secondary btn-sm active" id="btnAudioToggle" title="ເປີດ/ປິດສຽງບາໂຄດ" aria-label="ເປີດ/ປິດສຽງບາໂຄດ" onclick="toggleAudio()" style="width: 36px; height: 36px; padding: 0;">
+        <i data-lucide="volume-2" id="audioIcon" aria-hidden="true" style="width: 16px; height: 16px;"></i>
       </button>
-      <div style="display: flex; align-items: center; gap: 6px; padding: 0 10px; height: 36px; background: var(--bg-subtle); border: 1.5px solid var(--border); border-radius: var(--radius-sm); font-size: 12.5px; font-weight: 600;">
-        <i data-lucide="user" style="width: 14px; height: 14px; color: var(--text-muted);"></i>
+      <button type="button" class="btn btn-secondary btn-sm" id="posThemeBtn" title="ສະຫຼັບ Light / Dark Mode" aria-label="ສະຫຼັບໂໝດແສງ/ມືດ" onclick="togglePosTheme()" style="width: 36px; height: 36px; padding: 0;">
+        <i data-lucide="moon" id="posThemeIcon" aria-hidden="true" style="width: 16px; height: 16px;"></i>
+      </button>
+      <div class="hide-tablet" style="display: flex; align-items: center; gap: 6px; padding: 0 10px; height: 36px; background: var(--bg-subtle); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 12.5px; font-weight: 700;">
+        <i data-lucide="user" aria-hidden="true" style="width: 14px; height: 14px; color: var(--text-muted);"></i>
         <span><?= h($u['fullname']) ?></span>
       </div>
       <?php if ($is_manager): ?>
       <a href="dashboard.php" class="btn btn-secondary btn-sm" style="height: 36px;">
-        <i data-lucide="layout-dashboard" style="width: 14px; height: 14px;"></i>
+        <i data-lucide="layout-dashboard" aria-hidden="true" style="width: 14px; height: 14px;"></i>
         <span>ຫຼັງບ້ານ</span>
       </a>
       <?php else: ?>
-      <a href="logout.php" class="btn btn-secondary btn-sm" style="height: 36px;" title="ອອກຈາກລະບົບ">
-        <i data-lucide="log-out" style="width: 14px; height: 14px;"></i>
+      <a href="logout.php" class="btn btn-secondary btn-sm" style="height: 36px;" title="ອອກຈາກລະບົບ" aria-label="ອອກຈາກລະບົບ">
+        <i data-lucide="log-out" aria-hidden="true" style="width: 14px; height: 14px;"></i>
       </a>
       <?php endif; ?>
     </div>
@@ -182,26 +507,34 @@ $payment_qr  = get_setting('payment_qr');
   <main class="pos-container">
 
     <!-- LEFT: SEARCH + CATALOG -->
-    <section class="pos-catalog">
-      <div style="padding: 12px 18px; background: var(--card); border-bottom: 1.5px solid var(--border); display: flex; gap: 10px;">
+    <section class="pos-catalog" aria-label="ລາຍການສິນຄ້າ">
+      <div class="pos-search-bar">
         <div style="position: relative; flex: 1;">
-          <i data-lucide="scan-barcode" style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; color: var(--text-muted);"></i>
-          <input type="text" id="barcodeInput" class="clean-input" placeholder="ສະແກນບາໂຄດ ຫຼື ພິມລະຫັດ ແລ້ວກົດ Enter..." autofocus style="padding-left: 42px;">
+          <i data-lucide="scan-barcode" aria-hidden="true" style="position: absolute; left: 13px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; color: var(--primary);"></i>
+          <input type="text" id="barcodeInput" class="clean-input" placeholder="ສະແກນບາໂຄດ ຫຼື ພິມລະຫັດ..." autofocus style="padding-left: 42px; padding-right: 64px;">
+          <span class="kbd-hint">Enter</span>
         </div>
-        <div style="position: relative; width: 260px;">
-          <i data-lucide="search" style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--text-muted);"></i>
-          <input type="text" id="searchInput" class="clean-input" placeholder="ຄົ້ນຫາຊື່ສິນຄ້າ..." style="padding-left: 38px;">
+        <div style="position: relative; width: 270px;">
+          <i data-lucide="search" aria-hidden="true" style="position: absolute; left: 13px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--text-muted);"></i>
+          <input type="text" id="searchInput" class="clean-input" placeholder="ຄົ້ນຫາຊື່ສິນຄ້າ..." style="padding-left: 38px; padding-right: 38px;">
+          <span class="kbd-hint">/</span>
         </div>
       </div>
 
       <!-- Categories Pills -->
       <div class="cat-bar" id="catBar">
-        <button class="cat-chip active" onclick="filterCategory('', this)">
-          <i data-lucide="layout-grid" style="width: 14px; height: 14px;"></i> ທັງໝົດ
+        <button type="button" class="cat-chip active" onclick="filterCategory('', this)">
+          <i data-lucide="layout-grid" aria-hidden="true" style="width: 14px; height: 14px;"></i>
+          <span>ທັງໝົດ</span>
+          <span class="cat-count"><?= count($products) ?></span>
         </button>
-        <?php foreach ($categories as $c): ?>
-        <button class="cat-chip" onclick="filterCategory('<?= $c['id'] ?>', this)">
-          <i data-lucide="tag" style="width: 14px; height: 14px;"></i> <?= h($c['name']) ?>
+        <?php foreach ($categories as $c):
+          $cnt = $cat_counts[(string)$c['id']] ?? 0;
+        ?>
+        <button type="button" class="cat-chip" onclick="filterCategory('<?= $c['id'] ?>', this)">
+          <i data-lucide="tag" aria-hidden="true" style="width: 14px; height: 14px;"></i>
+          <span><?= h($c['name']) ?></span>
+          <span class="cat-count"><?= $cnt ?></span>
         </button>
         <?php endforeach; ?>
       </div>
@@ -213,47 +546,47 @@ $payment_qr  = get_setting('payment_qr');
     </section>
 
     <!-- RIGHT: CART TICKET -->
-    <aside class="pos-ticket">
+    <aside class="pos-ticket" aria-label="ກະຕ່າສິນຄ້າ">
       <!-- Member Search Bar -->
-      <div style="padding: 10px 16px; background: var(--bg-subtle); border-bottom: 1.5px solid var(--border); display: flex; align-items: center; gap: 8px;">
-        <i data-lucide="user-check" style="width: 16px; height: 16px; color: var(--text-muted); flex-shrink: 0;"></i>
-        <input type="text" id="customerSearch" placeholder="ຄົ້ນຫາສະມາຊິກ (ຊື່ / ເບີໂທ / ລະຫັດ)..." style="flex: 1; height: 36px; padding: 0 10px; font-size: 13px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: #fff;">
-        <button class="btn btn-secondary btn-sm" onclick="clearCustomer()" style="height: 36px; width: 36px; padding: 0;" title="ລ້າງສະມາຊິກ">
-          <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+      <div class="ticket-head">
+        <i data-lucide="user-check" aria-hidden="true" style="width: 16px; height: 16px; color: var(--primary); flex-shrink: 0;"></i>
+        <input type="text" id="customerSearch" placeholder="ຄົ້ນຫາສະມາຊິກ (ຊື່ / ເບີໂທ / ລະຫັດ)..." style="flex: 1; height: 36px; padding: 0 12px; font-size: 13px;">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="clearCustomer()" style="height: 36px; width: 36px; padding: 0;" title="ລ້າງສະມາຊິກ" aria-label="ລ້າງສະມາຊິກ">
+          <i data-lucide="x" aria-hidden="true" style="width: 14px; height: 14px;"></i>
         </button>
       </div>
       <div id="customerResults" style="position: relative;"></div>
-      <div id="customerInfo" style="padding: 6px 16px; font-size: 12px; font-weight: 700; color: var(--success-dark); background: var(--success-50); border-bottom: 1px solid #a7f3d0; display: none; align-items: center; gap: 6px;"></div>
+      <div id="customerInfo" style="padding: 8px 16px; font-size: 12.5px; font-weight: 700; color: var(--success-dark); background: var(--success-50); border-bottom: 1px solid var(--success-border); display: none; align-items: center; gap: 8px;"></div>
 
       <!-- Cart Item List -->
       <div class="cart-list" id="cartItems"></div>
 
       <!-- Cart Bottom Calculations -->
-      <div style="padding: 14px 18px; border-top: 1.5px solid var(--border); background: var(--card);">
-        <div style="display: flex; justify-content: space-between; font-size: 13px; color: var(--text-muted); margin-bottom: 6px;">
+      <div class="ticket-footer">
+        <div style="display: flex; justify-content: space-between; font-size: 13px; color: var(--text-muted); margin-bottom: 8px;">
           <span>ຍອດລວມ (<span id="sumQty" class="tabular">0</span> ລາຍການ)</span>
           <span id="sumSubtotal" class="tabular" style="font-weight: 700; color: var(--text);">0 ₭</span>
         </div>
 
         <!-- Discount row -->
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: 13px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 13px; gap: 8px;">
           <div style="display: flex; align-items: center; gap: 6px;">
-            <span>ສ່ວນຫຼຸດ:</span>
-            <select id="discountType" onchange="renderCart()" style="height: 30px; width: 92px; padding: 0 6px; font-size: 12px; border-radius: 5px;">
+            <span style="color:var(--text-muted);">ສ່ວນຫຼຸດ:</span>
+            <select id="discountType" onchange="renderCart()" style="height: 32px; width: 92px; padding: 0 6px; font-size: 12px;">
               <option value="amount">₭ (ກີບ)</option>
               <option value="percent">% (ເປີເຊັນ)</option>
             </select>
-            <input type="number" id="discountValue" value="0" min="0" oninput="renderCart()" style="height: 30px; width: 78px; padding: 0 6px; font-size: 12.5px; border-radius: 5px; text-align: right;" class="tabular">
+            <input type="number" id="discountValue" value="0" min="0" oninput="renderCart()" style="height: 32px; width: 78px; padding: 0 8px; font-size: 12.5px; text-align: right;" class="tabular">
           </div>
           <span id="sumDiscount" class="tabular" style="color: var(--danger); font-weight: 700;">-0 ₭</span>
         </div>
 
         <!-- Points Redemption row -->
-        <div id="pointRow" style="display: none; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: 13px;">
+        <div id="pointRow" style="display: none; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 13px; gap: 8px;">
           <div style="display: flex; align-items: center; gap: 6px;">
-            <span>ແລກຄະແນນ:</span>
-            <input type="number" id="pointsUsed" value="0" min="0" oninput="renderCart()" style="height: 30px; width: 72px; padding: 0 6px; font-size: 12.5px; border-radius: 5px; text-align: right;" class="tabular">
-            <small style="color: var(--text-muted); font-size: 11px;">(1 ຄະແນນ = <?= number_format($point_value) ?> ₭)</small>
+            <span style="color:var(--text-muted);">ແລກຄະແນນ:</span>
+            <input type="number" id="pointsUsed" value="0" min="0" oninput="renderCart()" style="height: 32px; width: 72px; padding: 0 8px; font-size: 12.5px; text-align: right;" class="tabular">
+            <small style="color: var(--text-muted); font-size: 11px;">(1 pt = <?= number_format($point_value) ?> ₭)</small>
           </div>
           <span id="sumPointsDiscount" class="tabular" style="color: var(--success-dark); font-weight: 700;">-0 ₭</span>
         </div>
@@ -266,22 +599,22 @@ $payment_qr  = get_setting('payment_qr');
         <?php endif; ?>
 
         <!-- Grand Total -->
-        <div style="margin-top: 8px; padding-top: 10px; border-top: 2px dashed var(--border-strong); display: flex; justify-content: space-between; align-items: baseline;">
-          <span style="font-size: 15px; font-weight: 700;">ຍອດຕ້ອງຊຳລະ</span>
-          <span id="sumTotal" class="tabular" style="font-size: 26px; font-weight: 800; color: var(--text);">0 ₭</span>
+        <div class="ticket-total-box">
+          <span style="font-size: 14.5px; font-weight: 700; color:var(--text);">ຍອດຕ້ອງຊຳລະ</span>
+          <span id="sumTotal" class="tabular" style="font-size: 26px; font-weight: 800; color: var(--success);">0 ₭</span>
         </div>
 
         <!-- Actions -->
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px;">
-          <button class="btn btn-secondary" onclick="holdSale()">
-            <i data-lucide="pause" style="width: 15px; height: 15px;"></i> ພັກບິນ (F2)
+          <button type="button" class="btn btn-secondary" onclick="holdSale()">
+            <i data-lucide="pause" aria-hidden="true"></i> <span>ພັກບິນ (F2)</span>
           </button>
-          <button class="btn btn-secondary" style="color: var(--danger);" onclick="clearCart()">
-            <i data-lucide="trash-2" style="width: 15px; height: 15px;"></i> ລຶບບິນ
+          <button type="button" class="btn btn-secondary" style="color: var(--danger);" onclick="clearCart()">
+            <i data-lucide="trash-2" aria-hidden="true"></i> <span>ລຶບບິນ</span>
           </button>
-          <button class="btn btn-primary" id="btnPay" onclick="openPayModal()" style="grid-column: span 2; height: 52px; font-size: 16px; justify-content: space-between; padding: 0 20px;">
+          <button type="button" class="btn btn-success btn-lg" id="btnPay" onclick="openPayModal()" style="grid-column: span 2; height: 52px; font-size: 16px; justify-content: space-between; padding: 0 20px;">
             <span style="display: flex; align-items: center; gap: 8px;">
-              <i data-lucide="check-circle-2" style="width: 18px; height: 18px;"></i>
+              <i data-lucide="check-circle-2" aria-hidden="true" style="width: 19px; height: 19px;"></i>
               <span>ຊຳລະເງິນ (F12)</span>
             </span>
             <span id="payBtnAmount" class="tabular">0 ₭</span>
@@ -291,43 +624,54 @@ $payment_qr  = get_setting('payment_qr');
     </aside>
   </main>
 
+  <!-- Mobile/Tablet Bottom Pane Switcher -->
+  <div class="pos-mobile-tabs" aria-label="ສະຫຼັບໜ້າຈໍ">
+    <button type="button" class="btn btn-primary" id="mobTabCatalog" onclick="setMobilePane('catalog')">
+      <i data-lucide="layout-grid" aria-hidden="true"></i>
+      <span>ສິນຄ້າ</span>
+    </button>
+    <button type="button" class="btn btn-secondary" id="mobTabCart" onclick="setMobilePane('cart')">
+      <i data-lucide="shopping-cart" aria-hidden="true"></i>
+      <span>ກະຕ່າ (<span id="mobCartCount" class="tabular">0</span>)</span>
+    </button>
+  </div>
+
   <!-- ================= PAYMENT MODAL ================= -->
-  <div class="modal-overlay" id="payModal">
+  <div class="modal-overlay" id="payModal" role="dialog" aria-modal="true" aria-labelledby="payModalHeading">
     <div class="modal-window" style="width: 520px;">
-      <div style="padding: 16px 20px; border-bottom: 1.5px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
-        <h3 style="font-size: 17px; font-weight: 800; display: flex; align-items: center; gap: 8px;">
-          <i data-lucide="wallet" style="width: 18px; height: 18px; color: var(--primary);"></i>
+      <div style="padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+        <h3 id="payModalHeading" style="font-size: 17px; font-weight: 800; display: flex; align-items: center; gap: 8px;">
+          <i data-lucide="wallet" aria-hidden="true" style="width: 18px; height: 18px; color: var(--success);"></i>
           <span>ຊຳລະເງິນ — <span id="payTotalLabel" class="tabular"></span></span>
         </h3>
-        <button class="btn btn-secondary btn-sm" onclick="closeModal('payModal')" style="width: 32px; height: 32px; padding: 0;">
-          <i data-lucide="x" style="width: 15px; height: 15px;"></i>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('payModal')" style="width: 34px; height: 34px; padding: 0;" aria-label="ປິດ">
+          <i data-lucide="x" aria-hidden="true" style="width: 15px; height: 15px;"></i>
         </button>
       </div>
 
       <div style="padding: 20px;">
-        <!-- Methods Tabs -->
         <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px;">
-          <button class="btn btn-secondary active" id="tabCash" onclick="selectPayMethod('cash')" style="height: 48px; border-radius: var(--radius-sm); font-size: 13.5px;">
-            <i data-lucide="banknote" style="width: 16px; height: 16px;"></i> ເງິນສົດ
+          <button type="button" class="btn btn-secondary active" id="tabCash" onclick="selectPayMethod('cash')" style="height: 48px; font-size: 13.5px;">
+            <i data-lucide="banknote" aria-hidden="true"></i> <span>ເງິນສົດ</span>
           </button>
-          <button class="btn btn-secondary" id="tabQR" onclick="selectPayMethod('qr')" style="height: 48px; border-radius: var(--radius-sm); font-size: 13.5px;">
-            <i data-lucide="qr-code" style="width: 16px; height: 16px;"></i> BCEL One / QR
+          <button type="button" class="btn btn-secondary" id="tabQR" onclick="selectPayMethod('qr')" style="height: 48px; font-size: 13.5px;">
+            <i data-lucide="qr-code" aria-hidden="true"></i> <span>BCEL / QR</span>
           </button>
-          <button class="btn btn-secondary" id="tabCard" onclick="selectPayMethod('card')" style="height: 48px; border-radius: var(--radius-sm); font-size: 13.5px;">
-            <i data-lucide="credit-card" style="width: 16px; height: 16px;"></i> ບັດ
+          <button type="button" class="btn btn-secondary" id="tabCard" onclick="selectPayMethod('card')" style="height: 48px; font-size: 13.5px;">
+            <i data-lucide="credit-card" aria-hidden="true"></i> <span>ບັດ</span>
           </button>
         </div>
 
         <!-- Cash Panel -->
         <div id="cashPanel">
-          <label style="display: block; font-size: 13px; font-weight: 700; margin-bottom: 6px;">ຮັບເງິນມາ (₭):</label>
-          <input type="number" id="paidAmount" oninput="calcChange()" class="cash-input tabular" placeholder="0" style="width: 100%; height: 50px; font-size: 24px; font-weight: 800; text-align: right; border: 2px solid var(--border-strong); border-radius: var(--radius-sm); padding: 0 14px;">
+          <label for="paidAmount" style="display: block; font-size: 13px; font-weight: 700; margin-bottom: 6px;">ຮັບເງິນມາ (₭):</label>
+          <input type="number" id="paidAmount" oninput="calcChange()" class="cash-input tabular" placeholder="0" style="width: 100%; height: 52px; font-size: 24px; font-weight: 800; text-align: right; border: 2px solid var(--border-strong); padding: 0 14px;">
 
           <div class="quick-cash-row">
-            <button class="quick-cash-btn" onclick="setExactPaid()">ພໍດີບິນ</button>
-            <button class="quick-cash-btn" onclick="addPaid(20000)">+20,000</button>
-            <button class="quick-cash-btn" onclick="addPaid(50000)">+50,000</button>
-            <button class="quick-cash-btn" onclick="addPaid(100000)">+100,000</button>
+            <button type="button" class="quick-cash-btn" onclick="setExactPaid()">ພໍດີບິນ</button>
+            <button type="button" class="quick-cash-btn" onclick="addPaid(20000)">+20,000</button>
+            <button type="button" class="quick-cash-btn" onclick="addPaid(50000)">+50,000</button>
+            <button type="button" class="quick-cash-btn" onclick="addPaid(100000)">+100,000</button>
           </div>
 
           <div class="change-display" id="changeDisplay">
@@ -336,133 +680,217 @@ $payment_qr  = get_setting('payment_qr');
           </div>
         </div>
 
-        <!-- QR Panel -->
+        <!-- QR Panel (with Offline Local SVG Fallback) -->
         <div id="qrPanel" style="display: none; text-align: center; padding: 10px 0;">
-          <div style="width: 190px; height: 190px; border: 2px dashed var(--border-strong); border-radius: var(--radius); margin: 0 auto 12px; display: flex; align-items: center; justify-content: center; background: #fff; padding: 10px;">
-            <img id="qrImg" alt="QR Code" style="width: 100%; height: 100%; object-fit: contain;">
+          <div style="width: 196px; height: 196px; border: 2px dashed var(--border-strong); border-radius: var(--radius); margin: 0 auto 12px; display: flex; align-items: center; justify-content: center; background: #fff; padding: 10px; position:relative;">
+            <img id="qrImg" alt="QR Code" style="width: 100%; height: 100%; object-fit: contain;" onerror="showOfflineQrFallback()">
+            <div id="qrOfflineFallback" style="display:none; flex-direction:column; align-items:center; justify-content:center; color:#0f172a; gap:6px; width:100%; height:100%;">
+              <svg viewBox="0 0 100 100" width="128" height="128" aria-hidden="true">
+                <rect x="4" y="4" width="28" height="28" fill="none" stroke="#0f172a" stroke-width="6"/>
+                <rect x="13" y="13" width="10" height="10" fill="#0f172a"/>
+                <rect x="68" y="4" width="28" height="28" fill="none" stroke="#0f172a" stroke-width="6"/>
+                <rect x="77" y="13" width="10" height="10" fill="#0f172a"/>
+                <rect x="4" y="68" width="28" height="28" fill="none" stroke="#0f172a" stroke-width="6"/>
+                <rect x="13" y="77" width="10" height="10" fill="#0f172a"/>
+                <rect x="42" y="12" width="8" height="8" fill="#0f172a"/>
+                <rect x="42" y="28" width="16" height="8" fill="#0f172a"/>
+                <rect x="12" y="42" width="16" height="8" fill="#0f172a"/>
+                <rect x="38" y="42" width="24" height="24" fill="#2563eb"/>
+                <rect x="70" y="44" width="18" height="8" fill="#0f172a"/>
+                <rect x="44" y="72" width="14" height="10" fill="#0f172a"/>
+                <rect x="68" y="68" width="24" height="24" fill="none" stroke="#0f172a" stroke-width="5"/>
+              </svg>
+              <span style="font-size:11px;font-weight:700;color:#475569;">LAO QR DEMO</span>
+            </div>
           </div>
           <p style="font-size: 13px; color: var(--text-muted); font-weight: 600;">ໃຫ້ລູກຄ້າສະແກນ QR ຜ່ານ BCEL One ຫຼື LAO QR</p>
         </div>
 
         <!-- Card Panel -->
         <div id="cardPanel" style="display: none; text-align: center; padding: 30px 10px; color: var(--text-muted);">
-          <i data-lucide="credit-card" style="width: 48px; height: 48px; margin-bottom: 8px; color: var(--text);"></i>
-          <p style="font-size: 14px; font-weight: 600;">ຮູດບັດຜ່ານເຄື່ອງ EDC ແລ້ວກົດຢືນຢັນການຊຳລະ</p>
+          <i data-lucide="credit-card" aria-hidden="true" style="width: 48px; height: 48px; margin-bottom: 8px; color: var(--primary);"></i>
+          <p style="font-size: 14px; font-weight: 600; color: var(--text);">ຮູດບັດຜ່ານເຄື່ອງ EDC ແລ້ວກົດຢືນຢັນການຊຳລະ</p>
         </div>
 
         <label style="display: flex; gap: 8px; align-items: center; margin-top: 14px; font-size: 13px; font-weight: 600; cursor: pointer;">
-          <input type="checkbox" id="taxInvoice" style="width: 16px; height: 16px;"> ອອກໃບກຳກັບພາສີ (Tax Invoice)
+          <input type="checkbox" id="taxInvoice" style="width: 17px; height: 17px;"> ອອກໃບກຳກັບພາສີ (Tax Invoice)
         </label>
       </div>
 
-      <div style="padding: 14px 20px; background: var(--bg-subtle); border-top: 1.5px solid var(--border); display: flex; gap: 10px;">
-        <button class="btn btn-secondary" style="flex: 0.35;" onclick="closeModal('payModal')">ຍົກເລີກ</button>
-        <button class="btn btn-success btn-lg" id="confirmPayBtn" onclick="confirmPay()" style="flex: 1;">
-          <i data-lucide="printer" style="width: 18px; height: 18px;"></i>
-          <span>ຢືນຢັນ & ພິມໃບບິນ</span>
+      <div style="padding: 14px 20px; background: var(--bg-subtle); border-top: 1px solid var(--border); display: flex; gap: 10px;">
+        <button type="button" class="btn btn-secondary" style="flex: 0.35;" onclick="closeModal('payModal')">ຍົກເລີກ</button>
+        <button type="button" class="btn btn-success btn-lg" id="confirmPayBtn" onclick="confirmPay()" style="flex: 1;">
+          <i data-lucide="printer" aria-hidden="true" style="width: 18px; height: 18px;"></i>
+          <span>ຢືນຢັນ &amp; ພິມໃບບິນ</span>
         </button>
       </div>
     </div>
   </div>
 
   <!-- ================= HELD ORDERS MODAL ================= -->
-  <div class="modal-overlay" id="heldModal">
+  <div class="modal-overlay" id="heldModal" role="dialog" aria-modal="true" aria-labelledby="heldModalTitle">
     <div class="modal-window" style="width: 460px;">
-      <div style="padding: 16px 20px; border-bottom: 1.5px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
-        <h3 style="font-size: 16px; font-weight: 800; display: flex; align-items: center; gap: 8px;">
-          <i data-lucide="pause-circle" style="width: 18px; height: 18px; color: var(--warning);"></i>
+      <div style="padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+        <h3 id="heldModalTitle" style="font-size: 16px; font-weight: 800; display: flex; align-items: center; gap: 8px;">
+          <i data-lucide="pause-circle" aria-hidden="true" style="width: 18px; height: 18px; color: var(--warning);"></i>
           <span>ບິນທີ່ພັກໄວ້ (Held Bills)</span>
         </h3>
-        <button class="btn btn-secondary btn-sm" onclick="closeModal('heldModal')" style="width: 32px; height: 32px; padding: 0;">
-          <i data-lucide="x" style="width: 15px; height: 15px;"></i>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('heldModal')" style="width: 34px; height: 34px; padding: 0;" aria-label="ປິດ">
+          <i data-lucide="x" aria-hidden="true" style="width: 15px; height: 15px;"></i>
         </button>
       </div>
-      <div id="heldList" style="padding: 14px 20px; max-height: 60vh; overflow-y: auto;"></div>
+      <div id="heldList" style="padding: 14px 20px; max-height: 60dvh; overflow-y: auto;"></div>
+    </div>
+  </div>
+
+  <!-- ================= HOLD NOTE MODAL (replaces prompt) ================= -->
+  <div class="modal-overlay" id="holdNoteModal" role="dialog" aria-modal="true" aria-labelledby="holdNoteTitle">
+    <div class="modal-window" style="width: 420px;">
+      <div style="padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+        <h3 id="holdNoteTitle" style="font-size: 16px; font-weight: 800; display: flex; align-items: center; gap: 8px;">
+          <i data-lucide="pause" aria-hidden="true" style="width: 18px; height: 18px; color: var(--warning);"></i>
+          <span>ພັກບິນຊົ່ວຄາວ</span>
+        </h3>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('holdNoteModal')" style="width: 34px; height: 34px; padding: 0;" aria-label="ປິດ">
+          <i data-lucide="x" aria-hidden="true" style="width: 15px; height: 15px;"></i>
+        </button>
+      </div>
+      <div style="padding: 20px;">
+        <label for="holdNoteInput" style="display: block; font-size: 13px; font-weight: 700; margin-bottom: 8px;">ໝາຍເຫດບິນພັກ (ເຊັ່ນ: ຊື່ລູກຄ້າ ຫຼື ເລກໂຕະ):</label>
+        <input type="text" id="holdNoteInput" class="clean-input" placeholder="ພິມໝາຍເຫດ (ຫຼື ປະວ່າງ)...">
+        <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:10px;">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('holdNoteInput').value='ລູກຄ້າລໍຖ້າ'">ລູກຄ້າລໍຖ້າ</button>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('holdNoteInput').value='ກຳລັງເລືອກເພີ່ມ'">ກຳລັງເລືອກເພີ່ມ</button>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('holdNoteInput').value='ໂຕະ 1'">ໂຕະ 1</button>
+        </div>
+      </div>
+      <div style="padding: 14px 20px; background: var(--bg-subtle); border-top: 1px solid var(--border); display: flex; gap: 10px;">
+        <button type="button" class="btn btn-secondary" style="flex: 0.4;" onclick="closeModal('holdNoteModal')">ຍົກເລີກ</button>
+        <button type="button" class="btn btn-warning" style="flex: 1;" onclick="submitHoldSale()">
+          <i data-lucide="check" aria-hidden="true"></i>
+          <span>ຢືນຢັນພັກບິນ</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= CONFIRM ACTION MODAL (replaces confirm) ================= -->
+  <div class="modal-overlay" id="confirmModal" role="dialog" aria-modal="true" aria-labelledby="confirmModalTitle">
+    <div class="modal-window" style="width: 400px;">
+      <div style="padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+        <h3 id="confirmModalTitle" style="font-size: 16px; font-weight: 800; display: flex; align-items: center; gap: 8px;">
+          <i data-lucide="alert-triangle" aria-hidden="true" style="width: 18px; height: 18px; color: var(--danger);"></i>
+          <span>ຢືນຢັນການດຳເນີນການ</span>
+        </h3>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="resolveConfirm(false)" style="width: 34px; height: 34px; padding: 0;" aria-label="ປິດ">
+          <i data-lucide="x" aria-hidden="true" style="width: 15px; height: 15px;"></i>
+        </button>
+      </div>
+      <div style="padding: 20px;">
+        <p id="confirmModalMsg" style="font-size: 14px; color: var(--text-muted); line-height: 1.6;"></p>
+      </div>
+      <div style="padding: 14px 20px; background: var(--bg-subtle); border-top: 1px solid var(--border); display: flex; gap: 10px;">
+        <button type="button" class="btn btn-secondary" style="flex: 0.45;" onclick="resolveConfirm(false)">ຍົກເລີກ</button>
+        <button type="button" class="btn btn-danger" style="flex: 1;" id="confirmModalOkBtn" onclick="resolveConfirm(true)">ຢືນຢັນ</button>
+      </div>
     </div>
   </div>
 
   <!-- ================= NUMPAD MODAL ================= -->
-  <div class="modal-overlay" id="numpadModal">
-    <div class="modal-window" style="width: 320px;">
-      <div style="padding: 14px 18px; border-bottom: 1.5px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+  <div class="modal-overlay" id="numpadModal" role="dialog" aria-modal="true" aria-labelledby="numpadTitle">
+    <div class="modal-window" style="width: 330px;">
+      <div style="padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
         <h3 style="font-size: 15px; font-weight: 800;" id="numpadTitle">ໃສ່ຈຳນວນ</h3>
-        <button class="btn btn-secondary btn-sm" onclick="closeModal('numpadModal')" style="width: 28px; height: 28px; padding: 0;">
-          <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('numpadModal')" style="width: 30px; height: 30px; padding: 0;" aria-label="ປິດ">
+          <i data-lucide="x" aria-hidden="true" style="width: 14px; height: 14px;"></i>
         </button>
       </div>
       <div style="padding: 16px;">
-        <input type="number" id="numpadInput" class="clean-input tabular" style="height: 48px; text-align: center; font-size: 26px; font-weight: 800;" value="1">
+        <input type="number" id="numpadInput" class="clean-input tabular" style="height: 50px; text-align: center; font-size: 26px; font-weight: 800;" value="1">
         <div class="numpad-grid">
-          <button class="numpad-btn" onclick="pressNum(1)">1</button>
-          <button class="numpad-btn" onclick="pressNum(2)">2</button>
-          <button class="numpad-btn" onclick="pressNum(3)">3</button>
-          <button class="numpad-btn" onclick="pressNum(4)">4</button>
-          <button class="numpad-btn" onclick="pressNum(5)">5</button>
-          <button class="numpad-btn" onclick="pressNum(6)">6</button>
-          <button class="numpad-btn" onclick="pressNum(7)">7</button>
-          <button class="numpad-btn" onclick="pressNum(8)">8</button>
-          <button class="numpad-btn" onclick="pressNum(9)">9</button>
-          <button class="numpad-btn" style="color: var(--danger);" onclick="clearNum()">C</button>
-          <button class="numpad-btn" onclick="pressNum(0)">0</button>
-          <button class="numpad-btn" style="color: var(--success);" onclick="confirmNum()">OK</button>
+          <button type="button" class="numpad-btn" onclick="pressNum(1)">1</button>
+          <button type="button" class="numpad-btn" onclick="pressNum(2)">2</button>
+          <button type="button" class="numpad-btn" onclick="pressNum(3)">3</button>
+          <button type="button" class="numpad-btn" onclick="pressNum(4)">4</button>
+          <button type="button" class="numpad-btn" onclick="pressNum(5)">5</button>
+          <button type="button" class="numpad-btn" onclick="pressNum(6)">6</button>
+          <button type="button" class="numpad-btn" onclick="pressNum(7)">7</button>
+          <button type="button" class="numpad-btn" onclick="pressNum(8)">8</button>
+          <button type="button" class="numpad-btn" onclick="pressNum(9)">9</button>
+          <button type="button" class="numpad-btn" style="color: var(--danger);" onclick="clearNum()">C</button>
+          <button type="button" class="numpad-btn" onclick="pressNum(0)">0</button>
+          <button type="button" class="numpad-btn" style="color: var(--success);" onclick="confirmNum()">OK</button>
         </div>
       </div>
     </div>
   </div>
 
   <!-- ================= SHIFT MODAL ================= -->
-  <div class="modal-overlay" id="shiftModal">
+  <div class="modal-overlay" id="shiftModal" role="dialog" aria-modal="true" aria-labelledby="shiftModalTitle">
     <div class="modal-window" style="width: 400px;">
-      <div style="padding: 16px 20px; border-bottom: 1.5px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
-        <h3 style="font-size: 16px; font-weight: 800; display: flex; align-items: center; gap: 8px;">
-          <i data-lucide="clock" style="width: 18px; height: 18px; color: var(--success);"></i>
+      <div style="padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+        <h3 id="shiftModalTitle" style="font-size: 16px; font-weight: 800; display: flex; align-items: center; gap: 8px;">
+          <i data-lucide="clock" aria-hidden="true" style="width: 18px; height: 18px; color: var(--success);"></i>
           <span>ເປີດກະເຮັດວຽກ</span>
         </h3>
-        <button class="btn btn-secondary btn-sm" onclick="closeModal('shiftModal')" style="width: 32px; height: 32px; padding: 0;">
-          <i data-lucide="x" style="width: 15px; height: 15px;"></i>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('shiftModal')" style="width: 34px; height: 34px; padding: 0;" aria-label="ປິດ">
+          <i data-lucide="x" aria-hidden="true" style="width: 15px; height: 15px;"></i>
         </button>
       </div>
       <div style="padding: 20px;">
-        <label style="display: block; font-size: 13px; font-weight: 700; margin-bottom: 6px;">ເງິນທອນເລີ່ມຕົ້ນໃນລີ້ນຊັກ (₭):</label>
+        <label for="openingCash" style="display: block; font-size: 13px; font-weight: 700; margin-bottom: 6px;">ເງິນທອນເລີ່ມຕົ້ນໃນລີ້ນຊັກ (₭):</label>
         <input type="number" id="openingCash" value="0" min="0" class="clean-input tabular" style="height: 48px; font-size: 20px; font-weight: 700;">
       </div>
-      <div style="padding: 14px 20px; background: var(--bg-subtle); border-top: 1.5px solid var(--border); display: flex; gap: 10px;">
-        <button class="btn btn-secondary" style="flex: 0.4;" onclick="closeModal('shiftModal')">ຍົກເລີກ</button>
-        <button class="btn btn-success" style="flex: 1;" onclick="openShift()">ຢືນຢັນເປີດກະ</button>
+      <div style="padding: 14px 20px; background: var(--bg-subtle); border-top: 1px solid var(--border); display: flex; gap: 10px;">
+        <button type="button" class="btn btn-secondary" style="flex: 0.4;" onclick="closeModal('shiftModal')">ຍົກເລີກ</button>
+        <button type="button" class="btn btn-success" style="flex: 1;" onclick="openShift()">ຢືນຢັນເປີດກະ</button>
       </div>
     </div>
   </div>
 
   <!-- ================= CLOSE SHIFT MODAL ================= -->
-  <div class="modal-overlay" id="closeShiftModal">
+  <div class="modal-overlay" id="closeShiftModal" role="dialog" aria-modal="true" aria-labelledby="closeShiftModalTitle">
     <div class="modal-window" style="width: 420px;">
-      <div style="padding: 16px 20px; border-bottom: 1.5px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
-        <h3 style="font-size: 16px; font-weight: 800; display: flex; align-items: center; gap: 8px;">
-          <i data-lucide="lock" style="width: 18px; height: 18px; color: var(--danger);"></i>
+      <div style="padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+        <h3 id="closeShiftModalTitle" style="font-size: 16px; font-weight: 800; display: flex; align-items: center; gap: 8px;">
+          <i data-lucide="lock" aria-hidden="true" style="width: 18px; height: 18px; color: var(--danger);"></i>
           <span>ປິດກະ — ນັບເງິນລີ້ນຊັກ</span>
         </h3>
-        <button class="btn btn-secondary btn-sm" onclick="closeModal('closeShiftModal')" style="width: 32px; height: 32px; padding: 0;">
-          <i data-lucide="x" style="width: 15px; height: 15px;"></i>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="closeModal('closeShiftModal')" style="width: 34px; height: 34px; padding: 0;" aria-label="ປິດ">
+          <i data-lucide="x" aria-hidden="true" style="width: 15px; height: 15px;"></i>
         </button>
       </div>
       <div style="padding: 20px;">
-        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">ເງິນສົດທີ່ຄວນມີ: <strong id="expectedCashLabel" class="tabular" style="color: var(--text); font-size: 16px;"></strong></p>
-        <label style="display: block; font-size: 13px; font-weight: 700; margin-bottom: 6px;">ເງິນສົດນັບໄດ້ຕົວຈິງ (₭):</label>
+        <p style="font-size: 13.5px; color: var(--text-muted); margin-bottom: 12px;">ເງິນສົດທີ່ຄວນມີ: <strong id="expectedCashLabel" class="tabular" style="color: var(--text); font-size: 16px;"></strong></p>
+        <label for="closingCashInput" style="display: block; font-size: 13px; font-weight: 700; margin-bottom: 6px;">ເງິນສົດນັບໄດ້ຕົວຈິງ (₭):</label>
         <input type="number" id="closingCashInput" min="0" class="clean-input tabular" style="height: 48px; font-size: 20px; font-weight: 700;">
       </div>
-      <div style="padding: 14px 20px; background: var(--bg-subtle); border-top: 1.5px solid var(--border); display: flex; gap: 10px;">
-        <button class="btn btn-secondary" style="flex: 0.4;" onclick="closeModal('closeShiftModal')">ຍົກເລີກ</button>
-        <button class="btn btn-danger" style="flex: 1;" onclick="confirmCloseShift()">ຢືນຢັນປິດກະ</button>
+      <div style="padding: 14px 20px; background: var(--bg-subtle); border-top: 1px solid var(--border); display: flex; gap: 10px;">
+        <button type="button" class="btn btn-secondary" style="flex: 0.4;" onclick="closeModal('closeShiftModal')">ຍົກເລີກ</button>
+        <button type="button" class="btn btn-danger" style="flex: 1;" onclick="confirmCloseShift()">ຢືນຢັນປິດກະ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= SHIFT CLOSED RESULT MODAL (replaces alert) ================= -->
+  <div class="modal-overlay" id="shiftResultModal" role="dialog" aria-modal="true" aria-labelledby="shiftResultTitle">
+    <div class="modal-window" style="width: 400px;">
+      <div style="padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px;">
+        <i data-lucide="check-circle-2" aria-hidden="true" style="width: 20px; height: 20px; color: var(--success);"></i>
+        <h3 id="shiftResultTitle" style="font-size: 16px; font-weight: 800;">ປິດກະສຳເລັດແລ້ວ</h3>
+      </div>
+      <div style="padding: 20px; display:flex; flex-direction:column; gap:10px;" id="shiftResultBody"></div>
+      <div style="padding: 14px 20px; background: var(--bg-subtle); border-top: 1px solid var(--border);">
+        <button type="button" class="btn btn-primary btn-block" onclick="location.reload()">ຕົກລົງ</button>
       </div>
     </div>
   </div>
 
   <!-- Toast Element -->
-  <div id="posToast" class="pos-toast"></div>
+  <div id="posToast" class="pos-toast" role="status" aria-live="polite"></div>
 
   <!-- ================= CLIENT JAVASCRIPT ================= -->
   <script>
-    // State & Constants
     let PRODUCTS = <?= json_encode($products, JSON_UNESCAPED_UNICODE) ?>;
     const TAX_RATE = <?= json_encode($tax_rate) ?>;
     const POINT_VALUE = <?= json_encode($point_value) ?>;
@@ -479,6 +907,38 @@ $payment_qr  = get_setting('payment_qr');
     let numpadTargetIdx = null;
     let showProductImages = true;
     let toastTimer = null;
+    let confirmResolver = null;
+
+    function updateClock() {
+      const el = document.getElementById('posClock');
+      if (!el) return;
+      const now = new Date();
+      el.textContent = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    }
+    updateClock();
+    setInterval(updateClock, 15000);
+
+    function syncPosThemeIcon(theme) {
+      const icon = document.getElementById('posThemeIcon');
+      if (!icon) return;
+      icon.setAttribute('data-lucide', theme === 'dark' ? 'sun' : 'moon');
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function togglePosTheme() {
+      const root = document.documentElement;
+      const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      try { localStorage.setItem('pos_theme', next); } catch (e) {}
+      syncPosThemeIcon(next);
+    }
+
+    function setMobilePane(pane) {
+      document.body.classList.toggle('pos-mobile-view-catalog', pane === 'catalog');
+      document.body.classList.toggle('pos-mobile-view-cart', pane === 'cart');
+      document.getElementById('mobTabCatalog').className = pane === 'catalog' ? 'btn btn-primary' : 'btn btn-secondary';
+      document.getElementById('mobTabCart').className = pane === 'cart' ? 'btn btn-primary' : 'btn btn-secondary';
+    }
 
     function showToast(msg, type = 'default') {
       const el = document.getElementById('posToast');
@@ -486,6 +946,24 @@ $payment_qr  = get_setting('payment_qr');
       el.textContent = msg;
       clearTimeout(toastTimer);
       toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+    }
+
+    function askConfirm(message) {
+      return new Promise((resolve) => {
+        confirmResolver = resolve;
+        document.getElementById('confirmModalMsg').textContent = message;
+        openModal('confirmModal');
+        setTimeout(() => document.getElementById('confirmModalOkBtn').focus(), 40);
+      });
+    }
+
+    function resolveConfirm(accepted) {
+      closeModal('confirmModal');
+      if (confirmResolver) {
+        const fn = confirmResolver;
+        confirmResolver = null;
+        fn(accepted);
+      }
     }
 
     function toggleCardImages() {
@@ -506,7 +984,7 @@ $payment_qr  = get_setting('payment_qr');
       audioEnabled = !audioEnabled;
       document.getElementById('btnAudioToggle').classList.toggle('active', audioEnabled);
       document.getElementById('audioIcon').setAttribute('data-lucide', audioEnabled ? 'volume-2' : 'volume-x');
-      lucide.createIcons();
+      if (window.lucide) lucide.createIcons();
     }
     function playBeep() {
       if (!audioEnabled) return;
@@ -551,7 +1029,6 @@ $payment_qr  = get_setting('payment_qr');
     function openModal(id) { document.getElementById(id).classList.add('open'); }
     function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
-    // Render Catalog
     function filterCategory(catId, btnEl) {
       currentCategory = catId;
       document.querySelectorAll('.cat-chip').forEach(b => b.classList.remove('active'));
@@ -569,36 +1046,41 @@ $payment_qr  = get_setting('payment_qr');
 
       const grid = document.getElementById('productGrid');
       if (!list.length) {
-        grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 48px 20px;"><i data-lucide="package-search" style="width: 36px; height: 36px; margin-bottom: 8px; opacity: 0.5;"></i><p>ບໍ່ພົບສິນຄ້າທີ່ຄົ້ນຫາ</p></div>';
-        lucide.createIcons();
+        grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 48px 20px;"><i data-lucide="package-search" aria-hidden="true" style="width: 38px; height: 38px; margin-bottom: 8px; opacity: 0.5;"></i><p style="font-weight:600;">ບໍ່ພົບສິນຄ້າທີ່ຄົ້ນຫາ</p></div>';
+        if (window.lucide) lucide.createIcons();
         return;
       }
 
       grid.innerHTML = list.map(p => {
         const out = Number(p.stock_qty) <= 0;
         const low = Number(p.stock_qty) > 0 && Number(p.stock_qty) <= Number(p.min_stock);
-        const imgBlock = (showProductImages && p.image)
-          ? `<div class="prod-img-wrap"><img src="uploads/${esc(p.image)}" alt="${esc(p.name)}" loading="lazy"></div>`
+        const cartItem = cart.find(i => i.id == p.id);
+        const imgBlock = showProductImages
+          ? (p.image
+              ? `<div class="prod-img-wrap"><img src="uploads/${esc(p.image)}" alt="${esc(p.name)}" loading="lazy"></div>`
+              : `<div class="prod-img-wrap"><i data-lucide="package" aria-hidden="true" style="width:28px;height:28px;opacity:0.45;"></i></div>`)
           : '';
         return `
-          <div class="prod-card ${out ? 'out' : ''}" onclick="addToCartById(${p.id})">
+          <div class="prod-card ${out ? 'out' : ''} ${cartItem ? 'in-cart' : ''}" onclick="addToCartById(${p.id})" role="button" tabindex="0">
+            ${cartItem ? `<span class="prod-cart-qty tabular">${cartItem.qty}</span>` : ''}
             <div>
               ${imgBlock}
               <div style="display: flex; justify-content: space-between; align-items: center; gap: 4px;">
-                <span style="font-size: 11px; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">${esc(p.category_name || 'ທົ່ວໄປ')}</span>
+                <span style="font-size: 11px; color: var(--primary); font-weight: 700; text-transform: uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(p.category_name || 'ທົ່ວໄປ')}</span>
                 <span style="font-family: var(--font-mono); font-size: 10.5px; color: var(--text-subtle);">${esc(p.barcode || '')}</span>
               </div>
               <div style="font-size: 13.5px; font-weight: 700; color: var(--text); line-height: 1.35; margin-top: 4px;">${esc(p.name)}</div>
             </div>
-            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 12px; gap: 6px;">
               <span class="tabular" style="font-size: 16px; font-weight: 800; color: var(--text);">${fmt(p.sell_price)} ₭</span>
-              <span class="badge tabular ${out ? 'badge-danger' : (low ? 'badge-warning' : '')}" style="font-size: 11px;">
+              <span class="badge tabular ${out ? 'badge-danger' : (low ? 'badge-warning' : 'badge-success')}" style="font-size: 11px;">
                 ${out ? 'ໝົດສະຕ໋ອກ' : 'ເຫຼືອ ' + p.stock_qty}
               </span>
             </div>
           </div>
         `;
       }).join('');
+      if (window.lucide) lucide.createIcons();
     }
 
     function addToCartById(id) {
@@ -654,9 +1136,9 @@ $payment_qr  = get_setting('payment_qr');
       renderCart();
     }
 
-    function clearCart() {
+    async function clearCart() {
       if (!cart.length) return;
-      if (confirm('ລຶບລາຍການສິນຄ້າທັງໝົດໃນບິນແທ້ບໍ່?')) {
+      if (await askConfirm('ລຶບລາຍການສິນຄ້າທັງໝົດໃນບິນແທ້ບໍ່?')) {
         cart = [];
         heldResumeId = null;
         renderCart();
@@ -689,7 +1171,6 @@ $payment_qr  = get_setting('payment_qr');
       closeModal('numpadModal');
     }
 
-    // Calculations
     function calcTotals() {
       const subtotal = cart.reduce((s, i) => s + (i.price * i.qty), 0);
       const discType = document.getElementById('discountType').value;
@@ -713,9 +1194,12 @@ $payment_qr  = get_setting('payment_qr');
     function renderCart() {
       const t = calcTotals();
       const wrap = document.getElementById('cartItems');
+      const totalQty = cart.reduce((s, i) => s + i.qty, 0);
+      const mobCnt = document.getElementById('mobCartCount');
+      if (mobCnt) mobCnt.textContent = totalQty;
 
       if (!cart.length) {
-        wrap.innerHTML = '<div style="text-align: center; color: var(--text-subtle); padding: 54px 0;"><i data-lucide="shopping-cart" style="width: 44px; height: 44px; stroke-width: 1.5; margin-bottom: 8px;"></i><p style="font-weight: 600;">ຍັງບໍ່ມີສິນຄ້າໃນບິນ</p><small>ສະແກນບາໂຄດ ຫຼື ຄລິກເລືອກສິນຄ້າທາງຊ້າຍ</small></div>';
+        wrap.innerHTML = '<div style="text-align: center; color: var(--text-subtle); padding: 54px 16px;"><i data-lucide="shopping-cart" aria-hidden="true" style="width: 44px; height: 44px; stroke-width: 1.5; margin-bottom: 10px;"></i><p style="font-weight: 700; color: var(--text-muted);">ຍັງບໍ່ມີສິນຄ້າໃນບິນ</p><small>ສະແກນບາໂຄດ ຫຼື ຄລິກເລືອກສິນຄ້າທາງຊ້າຍ</small></div>';
         document.getElementById('sumQty').textContent = '0';
         document.getElementById('sumSubtotal').textContent = '0 ₭';
         document.getElementById('sumDiscount').textContent = '-0 ₭';
@@ -724,31 +1208,31 @@ $payment_qr  = get_setting('payment_qr');
         document.getElementById('sumTotal').textContent = '0 ₭';
         document.getElementById('payBtnAmount').textContent = '0 ₭';
         document.getElementById('btnPay').disabled = true;
-        lucide.createIcons();
+        renderProducts();
         return;
       }
 
       wrap.innerHTML = cart.map((i, idx) => `
         <div class="cart-row ${i._flash ? 'flash' : ''}">
           <div style="flex: 1; min-width: 0;">
-            <div style="font-size: 13.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${esc(i.name)}</div>
+            <div style="font-size: 13.5px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${esc(i.name)}</div>
             <div class="tabular" style="font-size: 12px; color: var(--text-muted);">${fmt(i.price)} ₭ / ໜ່ວຍ</div>
           </div>
-          <div style="display: flex; align-items: center; border: 1.5px solid var(--border); border-radius: var(--radius-sm); overflow: hidden;">
-            <button class="btn btn-secondary btn-sm" style="width: 30px; height: 30px; padding: 0; border: none; border-radius: 0;" onclick="changeQty(${idx}, -1)">-</button>
-            <span class="tabular" style="width: 34px; text-align: center; font-size: 13.5px; font-weight: 700; cursor: pointer;" onclick="openNumpad(${idx})" title="ຄລິກໃສ່ຈຳນວນ">${i.qty}</span>
-            <button class="btn btn-secondary btn-sm" style="width: 30px; height: 30px; padding: 0; border: none; border-radius: 0;" onclick="changeQty(${idx}, 1)">+</button>
+          <div class="stepper-group">
+            <button type="button" class="stepper-btn" onclick="changeQty(${idx}, -1)" aria-label="ຫຼຸດຈຳນວນ">−</button>
+            <span class="stepper-val tabular" onclick="openNumpad(${idx})" title="ຄລິກໃສ່ຈຳນວນ">${i.qty}</span>
+            <button type="button" class="stepper-btn" onclick="changeQty(${idx}, 1)" aria-label="ເພີ່ມຈຳນວນ">+</button>
           </div>
-          <div class="tabular" style="font-size: 14.5px; font-weight: 800; min-width: 82px; text-align: right;">${fmt(i.price * i.qty)} ₭</div>
-          <button class="btn btn-secondary btn-sm" style="width: 30px; height: 30px; padding: 0; border: none; color: var(--danger);" onclick="removeItem(${idx})" title="ລຶບລາຍການ">
-            <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+          <div class="tabular" style="font-size: 14.5px; font-weight: 800; color: var(--text); min-width: 82px; text-align: right;">${fmt(i.price * i.qty)} ₭</div>
+          <button type="button" class="btn btn-secondary btn-sm" style="width: 34px; height: 34px; padding: 0; color: var(--danger);" onclick="removeItem(${idx})" title="ລຶບລາຍການ" aria-label="ລຶບລາຍການ">
+            <i data-lucide="x" aria-hidden="true" style="width: 14px; height: 14px;"></i>
           </button>
         </div>
       `).join('');
 
       cart.forEach(i => i._flash = false);
 
-      document.getElementById('sumQty').textContent = cart.reduce((s, i) => s + i.qty, 0);
+      document.getElementById('sumQty').textContent = totalQty;
       document.getElementById('sumSubtotal').textContent = fmt(t.subtotal) + ' ₭';
       document.getElementById('sumDiscount').textContent = '-' + fmt(t.discAmount) + ' ₭';
       document.getElementById('sumPointsDiscount').textContent = '-' + fmt(t.ptsDiscount) + ' ₭';
@@ -760,10 +1244,9 @@ $payment_qr  = get_setting('payment_qr');
       document.getElementById('sumTotal').textContent = fmt(t.total) + ' ₭';
       document.getElementById('payBtnAmount').textContent = fmt(t.total) + ' ₭';
       document.getElementById('btnPay').disabled = !HAS_SHIFT;
-      lucide.createIcons();
+      renderProducts();
     }
 
-    // Barcode Listener
     document.getElementById('barcodeInput').addEventListener('keydown', function(e) {
       if (e.key === 'Enter') {
         e.preventDefault();
@@ -782,7 +1265,6 @@ $payment_qr  = get_setting('payment_qr');
 
     document.getElementById('searchInput').addEventListener('input', renderProducts);
 
-    // Customer Search (Fixed action name & safe index selection)
     let searchTimer = null;
     document.getElementById('customerSearch').addEventListener('input', function() {
       clearTimeout(searchTimer);
@@ -793,14 +1275,14 @@ $payment_qr  = get_setting('payment_qr');
         const res = await api('search_customers', { q });
         lastCustomerResults = res.customers || [];
         if (!lastCustomerResults.length) {
-          resBox.innerHTML = '<div style="position: absolute; top: 0; left: 0; right: 0; background: #fff; border: 1.5px solid var(--border); border-radius: var(--radius-sm); padding: 10px 14px; font-size: 13px; color: var(--text-muted); box-shadow: var(--shadow-md); z-index: 30;">ບໍ່ພົບສະມາຊິກ</div>';
+          resBox.innerHTML = '<div class="customer-dropdown" style="padding: 10px 14px; font-size: 13px; color: var(--text-muted);">ບໍ່ພົບສະມາຊິກ</div>';
           return;
         }
-        resBox.innerHTML = '<div style="position: absolute; top: 0; left: 0; right: 0; background: #fff; border: 1.5px solid var(--border); border-radius: var(--radius-sm); max-height: 220px; overflow-y: auto; box-shadow: var(--shadow-md); z-index: 30;">' +
+        resBox.innerHTML = '<div class="customer-dropdown">' +
           lastCustomerResults.map((c, idx) => `
-            <div style="padding: 9px 14px; border-bottom: 1px solid var(--border); cursor: pointer;" onclick="selectCustomerByIdx(${idx})">
+            <div class="customer-option" onclick="selectCustomerByIdx(${idx})">
               <div style="display:flex;justify-content:space-between;align-items:center;">
-                <strong>${esc(c.name)}</strong>
+                <strong style="color:var(--text);">${esc(c.name)}</strong>
                 <span class="badge badge-info tabular">${esc(c.code)}</span>
               </div>
               <small style="color: var(--text-muted);">ໂທ: ${esc(c.phone || '-')} • <strong style="color: var(--success-dark);">ຄະແນນ: ${fmt(c.points)}</strong></small>
@@ -819,7 +1301,7 @@ $payment_qr  = get_setting('payment_qr');
       document.getElementById('customerSearch').value = c.name + ' (' + c.code + ')';
       const info = document.getElementById('customerInfo');
       info.style.display = 'flex';
-      info.innerHTML = `<i data-lucide="award" style="width:14px;height:14px;"></i> <span>${esc(c.name)} | ຄະແນນສະສົມ: <strong class="tabular">${fmt(c.points)}</strong> (ແລກໄດ້ສູງສຸດ <span class="tabular">${fmt(c.points * POINT_VALUE)} ₭</span>)</span>`;
+      info.innerHTML = `<i data-lucide="award" aria-hidden="true" style="width:15px;height:15px;flex-shrink:0;"></i> <span>${esc(c.name)} | ຄະແນນສະສົມ: <strong class="tabular">${fmt(c.points)}</strong> (ແລກໄດ້ສູງສຸດ <span class="tabular">${fmt(c.points * POINT_VALUE)} ₭</span>)</span>`;
       document.getElementById('pointRow').style.display = 'flex';
       renderCart();
     }
@@ -834,7 +1316,13 @@ $payment_qr  = get_setting('payment_qr');
       renderCart();
     }
 
-    // Payment Methods & Quick Cash
+    function showOfflineQrFallback() {
+      const img = document.getElementById('qrImg');
+      const fb = document.getElementById('qrOfflineFallback');
+      if (img) img.style.display = 'none';
+      if (fb) fb.style.display = 'flex';
+    }
+
     function selectPayMethod(method) {
       payMethod = method;
       document.getElementById('tabCash').classList.toggle('active', method === 'cash');
@@ -848,7 +1336,16 @@ $payment_qr  = get_setting('payment_qr');
       if (method === 'qr') {
         const t = calcTotals();
         const img = document.getElementById('qrImg');
-        img.src = PAYMENT_QR ? ('uploads/' + PAYMENT_QR) : ('https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=LAOQR-PAY-' + t.total);
+        const fb = document.getElementById('qrOfflineFallback');
+        if (PAYMENT_QR) {
+          fb.style.display = 'none';
+          img.style.display = 'block';
+          img.src = 'uploads/' + PAYMENT_QR;
+        } else {
+          fb.style.display = 'none';
+          img.style.display = 'block';
+          img.src = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=LAOQR-PAY-' + t.total;
+        }
       }
     }
 
@@ -957,8 +1454,8 @@ $payment_qr  = get_setting('payment_qr');
       }
     }
 
-    // Held Bills (F2)
-    async function holdSale() {
+    // Held Bills (F2) using custom #holdNoteModal
+    function holdSale() {
       if (!cart.length) {
         openHeldList();
         return;
@@ -968,8 +1465,15 @@ $payment_qr  = get_setting('payment_qr');
         openModal('shiftModal');
         return;
       }
-      const note = prompt('ໝາຍເຫດບິນພັກ (ເຊັ່ນ: ຊື່ລູກຄ້າ / ໂຕະ):', '');
-      if (note === null) return;
+      const inp = document.getElementById('holdNoteInput');
+      inp.value = '';
+      openModal('holdNoteModal');
+      setTimeout(() => inp.focus(), 60);
+    }
+
+    async function submitHoldSale() {
+      const note = document.getElementById('holdNoteInput').value.trim();
+      closeModal('holdNoteModal');
       const res = await api('checkout', {
         items: cart.map(i => ({ id: i.id, qty: i.qty })),
         discount_type: document.getElementById('discountType').value,
@@ -998,21 +1502,21 @@ $payment_qr  = get_setting('payment_qr');
         box.innerHTML = res.sales.map(s => `
           <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--border);">
             <div>
-              <strong style="font-size: 14px; font-family: var(--font-mono);">${esc(s.invoice_no)}</strong><br>
+              <strong style="font-size: 14px; font-family: var(--font-mono); color: var(--text);">${esc(s.invoice_no)}</strong><br>
               <small style="color: var(--text-muted);">${esc(s.note || 'ບໍ່ມີໝາຍເຫດ')} • ${s.created_at}</small>
               <div class="tabular" style="font-weight: 800; color: var(--text); margin-top: 2px;">${fmt(s.total ?? s.subtotal)} ₭</div>
             </div>
             <div style="display:flex;gap:6px;">
-              <button class="btn btn-primary btn-sm" onclick="resumeHeld(${s.id})">
-                <i data-lucide="play" style="width:13px;height:13px;"></i> ດຶງບິນ
+              <button type="button" class="btn btn-primary btn-sm" onclick="resumeHeld(${s.id})">
+                <i data-lucide="play" aria-hidden="true" style="width:13px;height:13px;"></i> <span>ດຶງບິນ</span>
               </button>
-              <button class="btn btn-danger btn-sm" onclick="deleteHeld(${s.id})" title="ລຶບບິນພັກ">
-                <i data-lucide="trash-2" style="width:13px;height:13px;"></i>
+              <button type="button" class="btn btn-danger btn-sm" onclick="deleteHeld(${s.id})" title="ລຶບບິນພັກ" aria-label="ລຶບບິນພັກ">
+                <i data-lucide="trash-2" aria-hidden="true" style="width:13px;height:13px;"></i>
               </button>
             </div>
           </div>
         `).join('');
-        lucide.createIcons();
+        if (window.lucide) lucide.createIcons();
       } else {
         box.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 28px 0;">ບໍ່ມີບິນທີ່ພັກໄວ້</p>';
       }
@@ -1020,7 +1524,7 @@ $payment_qr  = get_setting('payment_qr');
     }
 
     async function deleteHeld(id) {
-      if (!confirm('ຕ້ອງການລຶບບິນພັກນີ້ຖາວອນບໍ່?')) return;
+      if (!(await askConfirm('ຕ້ອງການລຶບບິນພັກນີ້ຖາວອນບໍ່?'))) return;
       const res = await api('delete_held', { id });
       if (res.ok) {
         if (heldResumeId == id) heldResumeId = null;
@@ -1031,7 +1535,7 @@ $payment_qr  = get_setting('payment_qr');
     }
 
     async function resumeHeld(id) {
-      if (cart.length && !confirm('ບິນປັດຈຸບັນຈະຖືກລ້າງ, ດຳເນີນຕໍ່ບໍ່?')) return;
+      if (cart.length && !(await askConfirm('ບິນປັດຈຸບັນຈະຖືກລ້າງ, ດຳເນີນຕໍ່ບໍ່?'))) return;
       const res = await api('resume_held', { id });
       if (!res.ok) { showToast(res.error, 'danger'); return; }
       cart = res.items.map(i => {
@@ -1062,7 +1566,6 @@ $payment_qr  = get_setting('payment_qr');
       if (badge && res.sales) badge.innerText = res.sales.length;
     }
 
-    // Shifts
     async function openShift() {
       const cash = parseFloat(document.getElementById('openingCash').value) || 0;
       const res = await api('open_shift', { opening_cash: cash });
@@ -1088,14 +1591,27 @@ $payment_qr  = get_setting('payment_qr');
       const res = await api('close_shift', { closing_cash: cash });
       if (res.ok) {
         const diff = res.difference ?? res.diff ?? 0;
-        alert('ປິດກະສຳເລັດແລ້ວ!\nເງິນສົດທີ່ຄວນມີ: ' + fmt(res.expected) + ' ₭\nສ່ວນຕ່າງ: ' + (diff >= 0 ? '+' : '') + fmt(diff) + ' ₭');
-        location.reload();
+        closeModal('closeShiftModal');
+        document.getElementById('shiftResultBody').innerHTML = `
+          <div style="display:flex;justify-content:space-between;font-size:14px;">
+            <span style="color:var(--text-muted);">ເງິນສົດທີ່ຄວນມີ:</span>
+            <strong class="tabular">${fmt(res.expected)} ₭</strong>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:14px;">
+            <span style="color:var(--text-muted);">ເງິນສົດນັບໄດ້ຕົວຈິງ:</span>
+            <strong class="tabular">${fmt(cash)} ₭</strong>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:15px;padding-top:10px;border-top:1px solid var(--border);">
+            <span style="font-weight:700;">ສ່ວນຕ່າງ:</span>
+            <strong class="tabular" style="color:${diff < 0 ? 'var(--danger)' : 'var(--success)'};">${diff >= 0 ? '+' : ''}${fmt(diff)} ₭</strong>
+          </div>
+        `;
+        openModal('shiftResultModal');
       } else {
         showToast(res.error, 'danger');
       }
     }
 
-    // API Helper
     async function api(action, data) {
       const res = await fetch('api.php?action=' + action, {
         method: 'POST',
@@ -1114,7 +1630,7 @@ $payment_qr  = get_setting('payment_qr');
       }
     }
 
-    // Global Shortcuts (F12, F2, Esc)
+    // Global Shortcuts (F12, F2, /, Esc)
     window.addEventListener('keydown', (e) => {
       if (e.key === 'F12') {
         e.preventDefault();
@@ -1122,20 +1638,30 @@ $payment_qr  = get_setting('payment_qr');
       } else if (e.key === 'F2') {
         e.preventDefault();
         holdSale();
+      } else if (e.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
+        e.preventDefault();
+        document.getElementById('searchInput').focus();
       } else if (e.key === 'Escape') {
-        closeModal('payModal');
-        closeModal('heldModal');
-        closeModal('numpadModal');
-        closeModal('shiftModal');
-        closeModal('closeShiftModal');
+        if (confirmResolver) {
+          resolveConfirm(false);
+          return;
+        }
+        ['payModal', 'heldModal', 'numpadModal', 'shiftModal', 'closeShiftModal', 'holdNoteModal'].forEach(closeModal);
       }
     });
 
-    // Initialize
+    document.getElementById('holdNoteInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submitHoldSale();
+      }
+    });
+
+    syncPosThemeIcon(document.documentElement.getAttribute('data-theme') || 'light');
     renderProducts();
     renderCart();
     updateHeldCounter();
-    lucide.createIcons();
+    if (window.lucide) lucide.createIcons();
   </script>
 </body>
 </html>
