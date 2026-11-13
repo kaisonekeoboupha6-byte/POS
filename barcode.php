@@ -34,9 +34,9 @@ include __DIR__ . '/header.php';
   </div>
 </div>
 
-<div id="labels" style="display:flex;flex-wrap:wrap;gap:10px;background:#fff;padding:18px;border:1.5px solid var(--border);border-radius:var(--radius)"></div>
+<div id="labels" style="display:flex;flex-wrap:wrap;gap:10px;background:var(--card);padding:18px;border:1px solid var(--border);border-radius:var(--radius)"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3/dist/JsBarcode.all.min.js"></script>
+<script src="assets/vendor/JsBarcode.all.min.js"></script>
 <script>
 function esc(s) { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
 function genLabels() {
@@ -47,7 +47,7 @@ function genLabels() {
   box.innerHTML = '';
   for (let i = 0; i < count; i++) {
     const div = document.createElement('div');
-    div.style.cssText = 'border:1px dashed #cbd5e1;border-radius:6px;padding:8px 6px;text-align:center;width:195px;background:#fff';
+    div.style.cssText = 'border:1px dashed #cbd5e1;border-radius:6px;padding:8px 6px;text-align:center;width:195px;background:#fff;color:#0f172a';
     div.innerHTML = `<div style="font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(opt.dataset.name)}</div>
       <svg class="bc"></svg>
       <div class="tabular" style="font-size:13.5px;font-weight:800">${Number(opt.dataset.price).toLocaleString()} ₭</div>`;

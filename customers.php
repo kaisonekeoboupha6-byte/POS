@@ -103,7 +103,7 @@ include __DIR__ . '/header.php';
         <button class="btn btn-sm btn-secondary" onclick='editCust(<?= json_encode($c, JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_QUOT) ?>)' title="ແກ້ໄຂ">
           <i data-lucide="pencil"></i>
         </button>
-        <form method="post" style="display:inline" onsubmit="return confirm('ລຶບສະມາຊິກນີ້ບໍ່?')">
+        <form method="post" style="display:inline" onsubmit="return confirmAction(this, 'ລຶບສະມາຊິກນີ້ບໍ່?')">
           <input type="hidden" name="act" value="delete"><input type="hidden" name="id" value="<?= $c['id'] ?>">
           <button class="btn btn-sm btn-danger" title="ລຶບ"><i data-lucide="trash-2"></i></button>
         </form>
@@ -120,6 +120,7 @@ include __DIR__ . '/header.php';
 <div class="grid grid-2">
   <div class="card">
     <h3><i data-lucide="receipt"></i> <span>ປະຫວັດການຊື້ — <?= h($viewing['name']) ?> (<?= h($viewing['code']) ?>)</span></h3>
+    <div class="table-wrap">
     <table class="table">
       <tr><th>ເລກບິນ</th><th class="num">ຍອດ</th><th>ສະຖານະ</th><th>ວັນທີ</th><th style="text-align:right">ພິມ</th></tr>
       <?php foreach ($history as $s): ?>
@@ -142,9 +143,11 @@ include __DIR__ . '/header.php';
       <?php endforeach; ?>
       <?php if (!$history): ?><tr><td colspan="5" style="color:var(--text-muted);text-align:center;padding:24px">ຍັງບໍ່ມີປະຫວັດການຊື້</td></tr><?php endif; ?>
     </table>
+    </div>
   </div>
   <div class="card">
     <h3><i data-lucide="award"></i> <span>ປະຫວັດຄະແນນ — ຄະແນນປັດຈຸບັນ: <span class="tabular"><?= number_format($viewing['points']) ?></span></span></h3>
+    <div class="table-wrap">
     <table class="table">
       <tr><th>ປະເພດ</th><th class="num">ຄະແນນ</th><th>ໝາຍເຫດ</th><th>ວັນທີ</th></tr>
       <?php foreach ($points_log as $pt): ?>
@@ -161,6 +164,7 @@ include __DIR__ . '/header.php';
       <?php endforeach; ?>
       <?php if (!$points_log): ?><tr><td colspan="4" style="color:var(--text-muted);text-align:center;padding:24px">ຍັງບໍ່ມີປະຫວັດຄະແນນ</td></tr><?php endif; ?>
     </table>
+    </div>
   </div>
 </div>
 <?php endif; ?>

@@ -87,7 +87,7 @@ include __DIR__ . '/header.php';
           <i data-lucide="pencil"></i> ແກ້ໄຂ
         </button>
         <?php if ($usr['id'] != $me['id']): ?>
-        <form method="post" style="display:inline" onsubmit="return confirm('ປິດການໃຊ້ງານຜູ້ໃຊ້ນີ້ບໍ່?')">
+        <form method="post" style="display:inline" onsubmit="return confirmAction(this, 'ປິດການໃຊ້ງານຜູ້ໃຊ້ນີ້ບໍ່?')">
           <input type="hidden" name="act" value="delete"><input type="hidden" name="id" value="<?= $usr['id'] ?>">
           <button class="btn btn-sm btn-danger" title="ປິດການໃຊ້ງານ"><i data-lucide="user-x"></i></button>
         </form>

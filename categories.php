@@ -53,7 +53,7 @@ include __DIR__ . '/header.php';
         <button class="btn btn-sm btn-secondary" onclick='editCat(<?= json_encode($c, JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>
           <i data-lucide="pencil"></i> ແກ້ໄຂ
         </button>
-        <form method="post" style="display:inline" onsubmit="return confirm('ລຶບໝວດໝູ່ນີ້ບໍ່?')">
+        <form method="post" style="display:inline" onsubmit="return confirmAction(this, 'ລຶບໝວດໝູ່ນີ້ບໍ່?')">
           <input type="hidden" name="act" value="delete"><input type="hidden" name="id" value="<?= $c['id'] ?>">
           <button class="btn btn-sm btn-danger" title="ລຶບ"><i data-lucide="trash-2"></i></button>
         </form>

@@ -158,38 +158,41 @@ $tabs = [
 </div>
 
 <div class="toolbar no-print" style="justify-content:flex-start">
-  <?php foreach ($tabs as $k => [$icon, $label]): ?>
-  <a class="btn <?= $type === $k ? 'btn-primary' : 'btn-secondary' ?>" href="reports.php?type=<?= $k ?>&from=<?= h($from) ?>&to=<?= h($to) ?>">
-    <i data-lucide="<?= $icon ?>"></i> <?= $label ?>
-  </a>
-  <?php endforeach; ?>
+  <div class="segmented-tabs" role="tablist" aria-label="ປະເພດລາຍງານ">
+    <?php foreach ($tabs as $k => [$icon, $label]): ?>
+    <a class="segmented-tab <?= $type === $k ? 'active' : '' ?>" href="reports.php?type=<?= $k ?>&from=<?= h($from) ?>&to=<?= h($to) ?>">
+      <i data-lucide="<?= $icon ?>" aria-hidden="true" style="width:15px;height:15px;"></i>
+      <span><?= $label ?></span>
+    </a>
+    <?php endforeach; ?>
+  </div>
 </div>
 
 <div class="grid grid-4">
-  <div class="stat-card">
-    <div class="icon" style="color:var(--primary);background:var(--primary-50)"><i data-lucide="receipt"></i></div>
+  <div class="stat-card" style="--stat-accent: var(--primary);">
+    <div class="icon" style="color:var(--primary);background:var(--primary-50)"><i data-lucide="receipt" aria-hidden="true"></i></div>
     <div>
       <div class="value tabular"><?= number_format($summary['bills']) ?></div>
       <div class="label">ຈຳນວນບິນສຳເລັດ</div>
     </div>
   </div>
-  <div class="stat-card">
-    <div class="icon" style="color:var(--success);background:var(--success-50)"><i data-lucide="banknote"></i></div>
+  <div class="stat-card" style="--stat-accent: var(--success);">
+    <div class="icon" style="color:var(--success);background:var(--success-50)"><i data-lucide="banknote" aria-hidden="true"></i></div>
     <div>
       <div class="value tabular"><?= money($summary['total']) ?></div>
       <div class="label">ຍອດຂາຍສຸດທິ</div>
     </div>
   </div>
-  <div class="stat-card">
-    <div class="icon" style="color:#6366f1;background:#eef2ff"><i data-lucide="package"></i></div>
+  <div class="stat-card" style="--stat-accent: var(--indigo);">
+    <div class="icon" style="color:var(--indigo);background:var(--indigo-50)"><i data-lucide="package" aria-hidden="true"></i></div>
     <div>
       <div class="value tabular"><?= money($pl['cost']) ?></div>
       <div class="label">ຕົ້ນທຶນສິນຄ້າ</div>
     </div>
   </div>
-  <div class="stat-card">
+  <div class="stat-card" style="--stat-accent: <?= $profit >= 0 ? 'var(--success)' : 'var(--danger)' ?>;">
     <div class="icon" style="color:<?= $profit >= 0 ? 'var(--success)' : 'var(--danger)' ?>;background:<?= $profit >= 0 ? 'var(--success-50)' : 'var(--danger-50)' ?>">
-      <i data-lucide="trending-up"></i>
+      <i data-lucide="trending-up" aria-hidden="true"></i>
     </div>
     <div>
       <div class="value tabular" style="color:<?= $profit >= 0 ? 'var(--success-dark)' : 'var(--danger)' ?>"><?= money($profit) ?></div>
@@ -200,11 +203,12 @@ $tabs = [
 
 <div class="card">
   <h3>
-    <i data-lucide="<?= $tabs[$type][0] ?? 'file-text' ?>"></i>
+    <i data-lucide="<?= $tabs[$type][0] ?? 'file-text' ?>" aria-hidden="true"></i>
     <span><?= $tabs[$type][1] ?? '' ?> (<?= date('d/m/Y', strtotime($from)) ?> - <?= date('d/m/Y', strtotime($to)) ?>)</span>
   </h3>
 
   <?php if ($type === 'sales'): ?>
+  <div class="table-wrap">
   <table class="table">
     <tr><th>ເລກບິນ</th><th>ວັນທີ</th><th>ພະນັກງານ</th><th>ລູກຄ້າ</th>
         <th class="num">ສ່ວນຫຼຸດ</th><th class="num">ຍອດຊຳລະ</th><th>ຊ່ອງທາງ</th><th>ສະຖານະ</th><th class="no-print" style="text-align:right">ຈັດການ</th></tr>
@@ -221,26 +225,28 @@ $tabs = [
           $pm = $r['payment_method'];
           if ($pm === 'cash') echo '<span class="badge">ເງິນສົດ</span>';
           elseif ($pm === 'qr') echo '<span class="badge badge-info">BCEL QR</span>';
-          elseif ($pm === 'card') echo '<span class="badge">ບັດ</span>';
+          elseif ($pm === 'card') echo '<span class="badge badge-indigo">ບັດ</span>';
           else echo '-';
         ?>
       </td>
       <td><?php $b = ['completed'=>['badge-success','ສຳເລັດ'],'held'=>['badge-warning','ພັກບິນ'],'cancelled'=>['badge-danger','ຍົກເລີກ']][$r['status']] ?? ['badge',$r['status']];
           echo '<span class="badge '.$b[0].'">'.$b[1].'</span>'; ?></td>
       <td class="no-print" style="text-align:right">
-        <a href="receipt.php?id=<?= $r['id'] ?>" target="_blank" class="btn btn-sm btn-secondary" title="ພິມໃບບິນ"><i data-lucide="printer"></i></a>
+        <a href="receipt.php?id=<?= $r['id'] ?>" target="_blank" class="btn btn-sm btn-secondary" title="ພິມໃບບິນ"><i data-lucide="printer" aria-hidden="true"></i></a>
         <?php if ($r['status'] === 'completed'): ?>
-        <form method="post" style="display:inline" onsubmit="return confirm('ຍົກເລີກບິນ <?= h($r['invoice_no']) ?> ບໍ່? ສະຕ໋ອກຈະຖືກຄືນ')">
+        <form method="post" style="display:inline" onsubmit="return confirmAction(this, 'ຍົກເລີກບິນ <?= h($r['invoice_no']) ?> ບໍ່? ສະຕ໋ອກຈະຖືກຄືນ')">
           <input type="hidden" name="act" value="cancel_sale"><input type="hidden" name="sale_id" value="<?= $r['id'] ?>">
-          <button class="btn btn-sm btn-danger"><i data-lucide="x-circle"></i> ຍົກເລີກ</button>
+          <button class="btn btn-sm btn-danger"><i data-lucide="x-circle" aria-hidden="true"></i> ຍົກເລີກ</button>
         </form>
         <?php endif; ?>
       </td>
     </tr>
     <?php endforeach; ?>
   </table>
+  </div>
 
   <?php elseif ($type === 'products'): ?>
+  <div class="table-wrap">
   <table class="table">
     <tr><th style="width:60px">#</th><th>ສິນຄ້າ</th><th class="num">ຈຳນວນຂາຍ</th><th class="num">ຍອດຂາຍ (₭)</th>
         <th class="num">ຕົ້ນທຶນ (₭)</th><th class="num">ກຳໄລ (₭)</th></tr>
@@ -255,8 +261,10 @@ $tabs = [
     </tr>
     <?php endforeach; ?>
   </table>
+  </div>
 
   <?php elseif ($type === 'staff'): ?>
+  <div class="table-wrap">
   <table class="table">
     <tr><th>ພະນັກງານ</th><th>ສິດທິ</th><th class="num">ຈຳນວນບິນ</th><th class="num">ຍອດຂາຍລວມ</th></tr>
     <?php foreach ($rows as $r): ?>
@@ -268,10 +276,14 @@ $tabs = [
     </tr>
     <?php endforeach; ?>
   </table>
+  </div>
 
   <?php elseif ($type === 'daily'): ?>
-  <canvas id="dailyChart" height="90" class="no-print"></canvas>
-  <table class="table" style="margin-top:16px">
+  <div style="position:relative; height:240px; margin-bottom:16px;" class="no-print">
+    <canvas id="dailyChart"></canvas>
+  </div>
+  <div class="table-wrap">
+  <table class="table">
     <tr><th>ວັນທີ</th><th class="num">ຈຳນວນບິນ</th><th class="num">ຍອດຂາຍລວມ (₭)</th></tr>
     <?php foreach ($rows as $r): ?>
     <tr><td class="tabular"><?= date('d/m/Y', strtotime($r['d'])) ?></td>
@@ -279,15 +291,54 @@ $tabs = [
         <td class="num"><strong><?= number_format($r['total']) ?> ₭</strong></td></tr>
     <?php endforeach; ?>
   </table>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  </div>
+  <script src="assets/vendor/chart.umd.min.js"></script>
   <script>
-  new Chart(document.getElementById('dailyChart'), {
-    type: 'line',
-    data: { labels: <?= json_encode(array_map(fn($r) => date('d/m', strtotime($r['d'])), $rows)) ?>,
-      datasets: [{ label: 'ຍອດຂາຍ (₭)', data: <?= json_encode(array_map(fn($r) => (float)$r['total'], $rows)) ?>,
-        borderColor: '#0284c7', backgroundColor: 'rgba(2,132,199,.1)', fill: true, tension: .25 }] },
-    options: { scales: { y: { beginAtZero: true } } }
-  });
+  (function () {
+    var canvas = document.getElementById('dailyChart');
+    if (!canvas || typeof Chart === 'undefined') return;
+    var labels = <?= json_encode(array_map(fn($r) => date('d/m', strtotime($r['d'])), $rows)) ?>;
+    var data = <?= json_encode(array_map(fn($r) => (float)$r['total'], $rows)) ?>;
+    var dailyChart = null;
+    function buildDailyChart() {
+      var cs = getComputedStyle(document.documentElement);
+      var textMuted = cs.getPropertyValue('--text-muted').trim() || '#475569';
+      var borderCol = cs.getPropertyValue('--border').trim() || '#e2e8f0';
+      var primary = cs.getPropertyValue('--primary').trim() || '#2563eb';
+      var ctx = canvas.getContext('2d');
+      var grad = ctx.createLinearGradient(0, 0, 0, 220);
+      grad.addColorStop(0, 'rgba(37, 99, 235, 0.25)');
+      grad.addColorStop(1, 'rgba(37, 99, 235, 0.01)');
+      if (dailyChart) dailyChart.destroy();
+      dailyChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'ຍອດຂາຍ (₭)',
+            data: data,
+            borderColor: primary,
+            backgroundColor: grad,
+            borderWidth: 2.5,
+            pointRadius: 4,
+            fill: true,
+            tension: 0.28
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { beginAtZero: true, grid: { color: borderCol }, ticks: { color: textMuted } },
+            x: { grid: { display: false }, ticks: { color: textMuted } }
+          }
+        }
+      });
+    }
+    buildDailyChart();
+    document.addEventListener('pos:themechange', buildDailyChart);
+  })();
   </script>
   <?php endif; ?>
 

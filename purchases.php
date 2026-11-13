@@ -70,9 +70,11 @@ include __DIR__ . '/header.php';
       </div>
       <div class="form-group"><label>ໝາຍເຫດ / ເລກທີໃບບິນຜູ້ສະໜອງ</label><input type="text" name="note" placeholder="ເຊັ່ນ: ໃບສົ່ງເຄື່ອງ #1024"></div>
     </div>
+    <div class="table-wrap">
     <table class="table" id="lineTable">
       <tr><th>ສິນຄ້າ</th><th style="width:140px">ຈຳນວນຮັບ</th><th style="width:170px">ຕົ້ນທຶນ/ໜ່ວຍ (₭)</th><th style="width:56px"></th></tr>
     </table>
+    </div>
     <div style="margin-top:14px;display:flex;gap:10px">
       <button type="button" class="btn btn-secondary" onclick="addLine()"><i data-lucide="plus"></i> ເພີ່ມແຖວສິນຄ້າ</button>
       <button type="submit" class="btn btn-success"><i data-lucide="check"></i> ບັນທຶກຮັບເຂົ້າສາງ</button>
@@ -82,6 +84,7 @@ include __DIR__ . '/header.php';
 
 <div class="card">
   <h3><i data-lucide="history"></i> <span>ປະຫວັດການຮັບສິນຄ້າເຂົ້າສາງ</span></h3>
+  <div class="table-wrap">
   <table class="table">
     <tr><th>ເລກທີອ້າງອີງ</th><th>ຜູ້ສະໜອງ</th><th>ຜູ້ບັນທຶກ</th><th class="num">ລາຍການ</th><th class="num">ມູນຄ່າລວມ</th><th>ໝາຍເຫດ</th><th>ວັນທີ</th></tr>
     <?php foreach ($history as $hrow): ?>
@@ -97,6 +100,7 @@ include __DIR__ . '/header.php';
     <?php endforeach; ?>
     <?php if (!$history): ?><tr><td colspan="7" style="color:var(--text-muted);text-align:center;padding:30px">ຍັງບໍ່ມີປະຫວັດການຮັບສິນຄ້າ</td></tr><?php endif; ?>
   </table>
+  </div>
 </div>
 
 <script>

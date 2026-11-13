@@ -50,8 +50,8 @@ include __DIR__ . '/header.php';
         <div class="label">ເງິນທອນເປີດກະ</div>
       </div>
     </div>
-    <div class="stat-card">
-      <div class="icon" style="color:#6366f1;background:#eef2ff"><i data-lucide="receipt"></i></div>
+    <div class="stat-card" style="--stat-accent: var(--indigo);">
+      <div class="icon" style="color:var(--indigo);background:var(--indigo-50)"><i data-lucide="receipt" aria-hidden="true"></i></div>
       <div>
         <div class="value tabular"><?= number_format($shift_summary['bills']) ?></div>
         <div class="label">ຈຳນວນບິນຂາຍສຳເລັດ</div>
@@ -76,7 +76,7 @@ include __DIR__ . '/header.php';
     <div style="display:flex;gap:16px;font-size:13.5px;color:var(--text-muted);font-weight:600">
       <span style="display:inline-flex;align-items:center;gap:6px"><i data-lucide="banknote" style="width:16px;height:16px;color:var(--success)"></i> ເງິນສົດ: <strong class="tabular" style="color:var(--text)"><?= money($shift_summary['cash']) ?></strong></span>
       <span style="display:inline-flex;align-items:center;gap:6px"><i data-lucide="qr-code" style="width:16px;height:16px;color:var(--primary)"></i> BCEL QR: <strong class="tabular" style="color:var(--text)"><?= money($shift_summary['qr']) ?></strong></span>
-      <span style="display:inline-flex;align-items:center;gap:6px"><i data-lucide="credit-card" style="width:16px;height:16px;color:#6366f1"></i> ບັດ: <strong class="tabular" style="color:var(--text)"><?= money($shift_summary['card']) ?></strong></span>
+      <span style="display:inline-flex;align-items:center;gap:6px"><i data-lucide="credit-card" style="width:16px;height:16px;color:var(--indigo)"></i> ບັດ: <strong class="tabular" style="color:var(--text)"><?= money($shift_summary['card']) ?></strong></span>
     </div>
     <button class="btn btn-danger" onclick="document.getElementById('closeModal').classList.add('show')">
       <i data-lucide="lock"></i> ປິດກະການເຮັດວຽກ
@@ -115,6 +115,7 @@ include __DIR__ . '/header.php';
 
 <div class="card">
   <h3><i data-lucide="history"></i> <span>ປະຫວັດກະການເຮັດວຽກ<?= $is_manager ? ' (ພະນັກງານທຸກຄົນ)' : '' ?></span></h3>
+  <div class="table-wrap">
   <table class="table">
     <tr><th>#</th><th>ພະນັກງານ</th><th>ເວລາເປີດ</th><th>ເວລາປິດ</th>
         <th class="num">ເງິນເປີດກະ</th><th class="num">ບິນ</th><th class="num">ຍອດຂາຍລວມ</th>
@@ -144,9 +145,38 @@ include __DIR__ . '/header.php';
       <tr><td colspan="11" style="color:var(--text-muted);text-align:center;padding:30px">ຍັງບໍ່ມີປະຫວັດກະການເຮັດວຽກ</td></tr>
     <?php endif; ?>
   </table>
+  </div>
+</div>
+
+<div class="modal-bg" id="shiftNoticeModal">
+  <div class="modal" style="max-width:420px;text-align:center">
+    <h3 id="snTitle" style="justify-content:center"></h3>
+    <div id="snBody" style="margin:12px 0 20px;line-height:1.7;color:var(--text-muted)"></div>
+    <button type="button" class="btn btn-primary" style="width:100%;justify-content:center" id="snBtn">ຕົກລົງ</button>
+  </div>
 </div>
 
 <script>
+let snAfterClose = null;
+function showShiftNotice(title, htmlBody, onDone) {
+  document.getElementById('snTitle').textContent = title;
+  document.getElementById('snBody').innerHTML = htmlBody;
+  snAfterClose = typeof onDone === 'function' ? onDone : null;
+  document.getElementById('shiftNoticeModal').classList.add('show');
+}
+function closeShiftNotice() {
+  document.getElementById('shiftNoticeModal').classList.remove('show');
+  if (snAfterClose) {
+    const fn = snAfterClose;
+    snAfterClose = null;
+    fn();
+  }
+}
+document.getElementById('snBtn').addEventListener('click', closeShiftNotice);
+document.getElementById('shiftNoticeModal').addEventListener('click', function (e) {
+  if (e.target === this) closeShiftNotice();
+});
+
 async function api(action, data) {
   const res = await fetch('api.php?action=' + action, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -155,16 +185,27 @@ async function api(action, data) {
 }
 async function openShift() {
   const res = await api('open_shift', { opening_cash: parseFloat(document.getElementById('openingCash').value) || 0 });
-  if (res.ok) location.reload(); else alert(res.error);
+  if (res.ok) location.reload();
+  else showShiftNotice('ເປີດກະບໍ່ສຳເລັດ', String(res.error || 'ເກີດຂໍ້ຜິດພາດ'));
 }
 async function closeShift() {
   const val = document.getElementById('closingCash').value;
-  if (val === '') { alert('ກະລຸນາປ້ອນເງິນນັບໄດ້'); return; }
+  if (val === '') {
+    showShiftNotice('ແຈ້ງເຕືອນ', 'ກະລຸນາປ້ອນເງິນນັບໄດ້');
+    return;
+  }
   const res = await api('close_shift', { closing_cash: parseFloat(val) || 0 });
   if (res.ok) {
-    alert('ປິດກະສຳເລັດ\nເງິນຄວນມີ: ' + Number(res.expected).toLocaleString() + ' ₭\nສ່ວນຕ່າງ: ' + Number(res.difference).toLocaleString() + ' ₭');
-    location.reload();
-  } else alert(res.error);
+    const exp = Number(res.expected).toLocaleString();
+    const diff = Number(res.difference).toLocaleString();
+    showShiftNotice(
+      'ປິດກະສຳເລັດ',
+      'ເງິນຄວນມີ: <strong>' + exp + ' ₭</strong><br>ສ່ວນຕ່າງ: <strong>' + diff + ' ₭</strong>',
+      () => location.reload()
+    );
+  } else {
+    showShiftNotice('ປິດກະບໍ່ສຳເລັດ', String(res.error || 'ເກີດຂໍ້ຜິດພາດ'));
+  }
 }
 </script>
 <?php include __DIR__ . '/footer.php'; ?>

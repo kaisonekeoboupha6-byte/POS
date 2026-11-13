@@ -138,7 +138,7 @@ include __DIR__ . '/header.php';
         <button class="btn btn-sm btn-warning" onclick='adjustStock(<?= (int)$p['id'] ?>, <?= json_encode($p['name'], JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>
           <i data-lucide="sliders-horizontal"></i> ສະຕ໋ອກ
         </button>
-        <form method="post" style="display:inline" onsubmit="return confirm('ລຶບສິນຄ້ານີ້ບໍ່?')">
+        <form method="post" style="display:inline" onsubmit="return confirmAction(this, 'ລຶບສິນຄ້ານີ້ບໍ່?')">
           <input type="hidden" name="act" value="delete"><input type="hidden" name="id" value="<?= $p['id'] ?>">
           <button class="btn btn-sm btn-danger" title="ລຶບສິນຄ້າ"><i data-lucide="trash-2"></i></button>
         </form>
